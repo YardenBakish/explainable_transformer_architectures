@@ -24,6 +24,8 @@ EPOCHS_TO_PERTURBATE = {
 
 MODEL_VARIANTS = {
     'baseline': {'components_with_grad': {'all': True, 'components': ["score.weight"]}},
+    'baseline2': {'components_with_grad': {'all': False, 'components': ["score.weight"]}},
+
     'attn_act_relu': {'components_with_grad': {'all': True, 'components': []}},
     'attn_act_relu2': {'components_with_grad': {'all': True, 'components': []}}, #
     'attn_act_relu3': {'components_with_grad': {'all': True, 'components': []}},
@@ -41,6 +43,9 @@ MODEL_VARIANTS = {
 
    
 def get_config(args, pert = False):
+    if args.variant == 'baseline2':
+        args.quant = True
+
     args.original_models       = f"{DEFAULT_PATHS['original_models_dir']}{args.model_size}/vanilla" 
     args.pretrained_model_path = f"{DEFAULT_PATHS['results_dir_root']}{args.dataset}/{args.model_size}/{args.variant}" 
     if args.variant not in MODEL_VARIANTS:

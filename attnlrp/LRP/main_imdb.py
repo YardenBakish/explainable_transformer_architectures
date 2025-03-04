@@ -57,6 +57,8 @@ parser.add_argument('--resume', action='store_true')
 parser.add_argument('--finetune', type=str)
 
 parser.add_argument('--eval', action='store_true')
+parser.add_argument('--quant', action='store_true')
+
 
 
 args = parser.parse_args()
@@ -124,8 +126,11 @@ print(args.num_warmup_steps)
 
 
 kwargs = {"attn_layer": args.attn_layer, "sequence_length": sequence_length }
-#model = LlamaForSequenceClassification.from_pretrained(PATH, local_files_only = True, torch_dtype=torch.bfloat16, device_map="cuda", quantization_config=bnb_config, attn_implementation="eager")
-model = LlamaForSequenceClassification.from_pretrained(PATH, local_files_only = True,  device_map="cuda", attn_implementation="eager")
+
+if args.quant:
+  model = LlamaForSequenceClassification.from_pretrained(PATH, local_files_only = True, torch_dtype=torch.bfloat16, device_map="cuda", quantization_config=bnb_config, attn_implementation="eager")
+else: 
+  model = LlamaForSequenceClassification.from_pretrained(PATH, local_files_only = True,  device_map="cuda", attn_implementation="eager")
 
 
 if args.finetune:
@@ -229,6 +234,10 @@ for k, v in model.named_parameters():
     else:  
       params_to_train[k] = v
      
+
+
+
+
 
 
 assert set(ignore_params.keys()) != set(params_to_train.keys())

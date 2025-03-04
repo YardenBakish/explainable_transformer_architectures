@@ -35,18 +35,21 @@ import argparse
 parser = argparse.ArgumentParser(description='Train a segmentation')
 parser.add_argument('--model-size', type=str,
                         choices=['llama_2_7b', 'llama_tiny'],
+                        default = 'llama_tiny',
                        # required = True,
                         help='')
 parser.add_argument('--variant', type=str,
                        default="baseline")
 parser.add_argument('--resume', action='store_true')
+parser.add_argument('--pe', action='store_true')
+
 parser.add_argument('--trained_model', type=str,)
 
 parser.add_argument('--sequence-length', type=int,
                        )
 args = parser.parse_args()
 args.dataset = 'imdb'
-args.model_size = 'llama_tiny'
+#rgs.model_size = 'llama_tiny'
 
 config.get_config(args, pert = True)
 
@@ -55,11 +58,16 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
-model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
+
+if args.model_size == 'llama_tiny': 
+    model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
+if args.model_size == 'llama_2_7b':
+    model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline/best_checkpoint/pytorch_model.bin"
 
 PATH = args.original_models
 
-
+#print(PATH)
+#exit(1)
 
 tokenizer = AutoTokenizer.from_pretrained(PATH)
 tokenizer.pad_token = tokenizer.eos_token
@@ -74,7 +82,7 @@ bnb_config = BitsAndBytesConfig(
 )
 
 #llamaModel = LlamaForSequenceClassification.from_pretrained(PATH, torch_dtype=torch.bfloat16, device_map="cuda", quantization_config=bnb_config, attn_implementation="eager")
-llamaModel = LlamaForSequenceClassification.from_pretrained(PATH, torch_dtype=torch.bfloat16, device_map="cuda",  attn_implementation="eager")
+llamaModel = LlamaForSequenceClassification.from_pretrained(PATH,  device_map="cuda",   attn_implementation="eager")
 
 conf = llamaModel.config
 conf.num_labels = 2
@@ -82,31 +90,6 @@ conf.pad_token_id = tokenizer.pad_token_id
 
 
 model = LlamaForSequenceClassification.from_pretrained(model_checkpoint, config = conf,  torch_dtype=torch.bfloat16, device_map="cuda")
-#params = torch.load(model_checkpoint, map_location=torch.device(device))
-#model.config.pad_token_id = tokenizer.pad_token_id
-#model.config.num_labels = 2
-'''
-model_keys = set(model.state_dict().keys())    # Keys from the new model
-saved_keys = set(params.keys())  
-
-print("Keys in saved file but not in model:", saved_keys - model_keys)
-print("\n\n")
-print("Keys in model but not in saved file:", model_keys - saved_keys)
-
-if len(list(model_keys)) != len(list(saved_keys)):
-    print("ERROR!")
-    exit(1)
-'''
-'''
-for key in model.state_dict().keys():
-    if model.state_dict()[key].shape != params[key].shape:
-        print(f"Shape mismatch for {key}:")
-        print(f"Model shape: {model.state_dict()[key].shape}")
-        print(f"Loaded shape: {params[key].shape}")
-        exit(1)
-
-'''
-#model.load_state_dict(params)
 model.to(device)
 
 
@@ -125,7 +108,7 @@ attnlrp.register(model)
 
 count = 0
 for d in tqdm(test_data_loader):
-    if count !=11:
+    if count !=22:
         count+=1
         continue
     input_ids = d["input_ids"].to(device)
@@ -135,33 +118,54 @@ for d in tqdm(test_data_loader):
     
     input_embeds = model.get_input_embeddings()(input_ids)
     
-    #print("A")
-    #print(input_embeds)
-    #print("\n\n")
-    #print(tokenizer.convert_ids_to_tokens(input_ids[0]))
-    outputs = model(
-        inputs_embeds = input_embeds.requires_grad_(),
-        #input_ids=input_ids,
-        use_cache=False,
-        attention_mask=attention_mask
-      )['logits']
-  
-    #input_embeds = model.get_input_embeddings()(input_ids)
+    if args.pe:
+        position_ids = torch.arange(
+                0.0, 512.0, device=input_embeds.device,  requires_grad=True,
+               dtype=torch.float32
+            ).reshape(1, -1)
+    
+        position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
+        position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
+
+        outputs = model(
+            inputs_embeds = input_embeds.requires_grad_(),
+            position_embeddings = position_embeddings,
+            #input_ids=input_ids,
+            use_cache=False,
+            attention_mask=attention_mask
+          )['logits']
+    
+    else:
+        outputs = model(
+            inputs_embeds = input_embeds.requires_grad_(),
+            #position_embeddings = position_embeddings,
+            #input_ids=input_ids,
+            use_cache=False,
+            attention_mask=attention_mask
+          )['logits']
    
-    #print("B")
-    #print(input_embeds)
-    #print("\n\n")
   
     max_logits, max_indices = torch.max(outputs, dim=1)
-    print(max_indices)
-    print(targets)
-
-    
     max_logits.backward(max_logits)
-    relevance = input_embeds.grad.float().sum(-1).cpu()[0] # cast to float32 before summation for higher precision
-
-    relevance = relevance / relevance.abs().max()
     
+   
+
+    relevance = input_embeds.grad.float().sum(-1).cpu()[0] # cast to float32 before summation for higher precision
+    relevance = relevance / relevance.abs().max()
+
+    if args.pe:
+        acc_relevancy = 0.
+        for pos_embed in position_embeddings:
+            for i in range(1):
+                curr_relevancy = pos_embed[i].grad.float().sum(-1).cpu()[0]
+                curr_relevancy = curr_relevancy / curr_relevancy.abs().max()
+                acc_relevancy += curr_relevancy.abs()
+
+        acc_relevancy = (acc_relevancy - acc_relevancy.min()) / (acc_relevancy.max() - acc_relevancy.min())
+        relevance+=acc_relevancy
+        relevance = relevance / relevance.abs().max()
+        relevance = acc_relevancy
+
 
     tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
     tokens = clean_tokens(tokens)

@@ -198,7 +198,7 @@ class LlamaRotaryEmbedding(nn.Module):
             self.register_buffer("inv_freq", self.original_inv_freq, persistent=False)
             self.max_seq_len_cached = self.original_max_seq_len
 
-    #@torch.no_grad()
+    @torch.no_grad()
     def forward(self, x, position_ids):
         if "dynamic" in self.rope_type: #its not
            
@@ -256,7 +256,8 @@ def rotate_half(x):
     return torch.cat((lf.mul2(x2, -1), x1), dim=-1) #### <---- LXT
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
+#YARDEN
+def apply_rotary_pos_emb(q, k, cos, sin,detachPE, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -280,8 +281,14 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     sin = sin.unsqueeze(unsqueeze_dim)
     # q_embed = (q * cos) + (rotate_half(q) * sin)
     # k_embed = (k * cos) + (rotate_half(k) * sin)
-    q_embed = lf.add2(lf.mul2(q, cos.detach()), lf.mul2(rotate_half(q), sin.detach())) #### <---- LXT
-    k_embed = lf.add2(lf.mul2(k, cos.detach()), lf.mul2(rotate_half(k), sin.detach())) #### <---- LXT
+
+    if detachPE:
+        q_embed = lf.add2(lf.mul2(q, cos.detach()), lf.mul2(rotate_half(q), sin.detach())) #### <---- LXT
+        k_embed = lf.add2(lf.mul2(k, cos.detach()), lf.mul2(rotate_half(k), sin.detach())) #### <---- LXT
+    else:
+        q_embed = lf.add2(lf.mul2(q, cos), lf.mul2(rotate_half(q), sin)) #### <---- LXT
+        k_embed = lf.add2(lf.mul2(k, cos), lf.mul2(rotate_half(k), sin)) #### <---- LXT
+    
     return q_embed, k_embed
 
 
@@ -363,6 +370,7 @@ class LlamaAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        detachPE: bool = True,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         **kwargs,
@@ -390,8 +398,10 @@ class LlamaAttention(nn.Module):
             )
             cos, sin = self.rotary_emb(value_states, position_ids)
         else:
+            #print(position_embeddings[0].requires_grad == True)
             cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        #print(detachPE)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin,detachPE)
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
@@ -467,9 +477,12 @@ class LlamaDecoderLayer(nn.Module):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
+
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        detachPE: Optional[bool] = False,
+        
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
@@ -494,8 +507,9 @@ class LlamaDecoderLayer(nn.Module):
                 Arbitrary kwargs to be ignored, used for FSDP and other methods that injects code
                 into the model
         """
+        #print(detachPE)
         residual = hidden_states
-
+   
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
@@ -506,6 +520,7 @@ class LlamaDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            detachPE=detachPE,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
             **kwargs,
@@ -679,6 +694,9 @@ class LlamaModel(LlamaPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
+    
+
+
     def get_input_embeddings(self):
         return self.embed_tokens
 
@@ -693,6 +711,7 @@ class LlamaModel(LlamaPreTrainedModel):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        position_embeddings: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -750,18 +769,26 @@ class LlamaModel(LlamaPreTrainedModel):
         hidden_states = inputs_embeds
 
         # create position embeddings to be shared across the decoder layers
- 
-        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        flag = 0
+        if position_embeddings is None:
+        
+            flag = 1
+            position_embeddings = self.rotary_emb(hidden_states, position_ids) #requires grad - good
+    
 
-        # decoder layers
+        #print(position_embeddings[0][0])
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = None
 
-        for decoder_layer in self.layers:
+        for i, decoder_layer in enumerate(self.layers):
+            if flag == 0:
+                pos_embed = position_embeddings[i]
+            else:
+                pos_embed = position_embeddings
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
-
+            detachPE = flag==1
             # if self.gradient_checkpointing and self.training:
             if self.gradient_checkpointing: #### <---- LXT
                 layer_outputs = self._gradient_checkpointing_func(
@@ -773,9 +800,12 @@ class LlamaModel(LlamaPreTrainedModel):
                     output_attentions,
                     use_cache,
                     cache_position,
-                    position_embeddings,
+                    pos_embed,
+                    detachPE
+                    #flag ==1,
                 )
             else:
+            
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=causal_mask,
@@ -784,7 +814,8 @@ class LlamaModel(LlamaPreTrainedModel):
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                     cache_position=cache_position,
-                    position_embeddings=position_embeddings,
+                    position_embeddings=pos_embed,
+                    detachPE = detachPE
                 )
 
             hidden_states = layer_outputs[0]
@@ -1088,6 +1119,9 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
+    
+    def get_input_pos_embeddings(self):
+        return self.model.rotary_emb
 
     def set_input_embeddings(self, value):
         self.model.embed_tokens = value
@@ -1100,6 +1134,7 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        position_embeddings: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -1120,6 +1155,7 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
             position_ids=position_ids,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
+            position_embeddings = position_embeddings,
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
