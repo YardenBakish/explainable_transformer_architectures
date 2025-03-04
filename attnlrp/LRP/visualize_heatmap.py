@@ -164,7 +164,8 @@ for d in tqdm(test_data_loader):
         acc_relevancy = (acc_relevancy - acc_relevancy.min()) / (acc_relevancy.max() - acc_relevancy.min())
         relevance+=acc_relevancy
         relevance = relevance / relevance.abs().max()
-        relevance = acc_relevancy
+        #when we want to check only positional:
+        #relevance = acc_relevancy
 
 
     tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
