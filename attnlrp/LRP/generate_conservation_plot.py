@@ -3,7 +3,8 @@ import torch
 from transformers import AutoTokenizer
 from transformers import BitsAndBytesConfig, AdamW, get_linear_schedule_with_warmup
 import config
-
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
 #from lxt.models.llama import LlamaForCausalLM, attnlrp, LlamaForTokenClassification, LlamaForSequenceClassification
 from lxt.models.llama_PE import LlamaForCausalLM, attnlrp, LlamaForTokenClassification, LlamaForSequenceClassification
 
@@ -117,12 +118,13 @@ model.gradient_checkpointing_enable()
 
 # apply AttnLRP rules
 attnlrp.register(model)
-
+res = []
 count = 0
-for d in tqdm(test_data_loader):
-    if count !=18:
-        count+=1
-        continue
+for i, d in enumerate(tqdm(test_data_loader)):
+
+    if count > 1500:
+        break
+    
     input_ids = d["input_ids"].to(device)
     attention_mask = d["attention_mask"].to(device)
     targets = d["targets"].to(device)
@@ -130,72 +132,118 @@ for d in tqdm(test_data_loader):
     
     input_embeds = model.get_input_embeddings()(input_ids)
     
-    if args.pe:
-        position_ids = torch.arange(
-                0.0, input_ids.shape[1], device=input_embeds.device,  requires_grad=True,
-               dtype=torch.float32
-            ).reshape(1, -1)
-    
-        position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
-        position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
+  
+    position_ids = torch.arange(
+            0.0, input_ids.shape[1], device=input_embeds.device,  requires_grad=True,
+           dtype=torch.float32
+        ).reshape(1, -1)
 
-        outputs = model(
-            inputs_embeds = input_embeds.requires_grad_(),
-            position_embeddings = position_embeddings,
-            #input_ids=input_ids,
-            use_cache=False,
-            attention_mask=attention_mask
-          )['logits']
+    position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
+    position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
+    outputs = model(
+        inputs_embeds = input_embeds.requires_grad_(),
+        position_embeddings = position_embeddings,
+        #input_ids=input_ids,
+        use_cache=False,
+        attention_mask=attention_mask
+      )['logits']
     
-    else:
-        outputs = model(
-            inputs_embeds = input_embeds.requires_grad_(),
-            #position_embeddings = position_embeddings,
-            #input_ids=input_ids,
-            use_cache=False,
-            attention_mask=attention_mask
-          )['logits']
+    
    
   
     max_logits, max_indices = torch.max(outputs, dim=1)
     max_logits.backward(max_logits)
     
-   
-
+    next_token_id = max_indices.item() 
     relevance = input_embeds.grad.float().sum(-1).cpu()[0] # cast to float32 before summation for higher precision
-    relevance = relevance / relevance.abs().max()
 
-    if args.pe:
-        acc_relevancy = 0.
-        for pos_embed in position_embeddings:
-            for i in range(1):
-                #print(pos_embed[i].grad.float().dtype)
-                #print(pos_embed[i].dtype)
-                if args.reform:
-                    curr_relevancy = torch.matmul(pos_embed[i].grad.abs(), pos_embed[i].transpose(-1, -2).abs()).detach()
-                    curr_relevancy = curr_relevancy.float().sum(-1).cpu()[0]
-                else:
-                    curr_relevancy = pos_embed[i].grad.float().sum(-1).cpu()[0]
-                curr_relevancy = curr_relevancy / curr_relevancy.abs().max()
-                #print(curr_relevancy.requires_grad == True)
-                #exit(1)
-                acc_relevancy += curr_relevancy.abs()
-
-        acc_relevancy = (acc_relevancy - acc_relevancy.min()) / (acc_relevancy.max() - acc_relevancy.min())
-        relevance+=acc_relevancy
-        relevance = relevance / relevance.abs().max()
-        #when we want to check only positional:
-        #relevance = acc_relevancy
+    if next_token_id != targets.item():
+        continue
+    count+=1
+    relevance = input_embeds.grad.float().sum(-1).cpu()[0] # cast to float32 before summation for higher precision
+    #relevance = relevance / relevance.abs().max()
+    relevance = relevance.sum()
 
 
-    tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-    tokens = clean_tokens(tokens)
+    acc_relevancy = 0.
+    for pos_embed in position_embeddings:
+        if args.reform:
+            x1 = torch.matmul(pos_embed[0].grad.abs(), pos_embed[0].transpose(-1, -2).abs()).sum(-1).cpu()[0]
+            x2 = torch.matmul(pos_embed[1].grad.abs(), pos_embed[1].transpose(-1, -2).abs()).sum(-1).cpu()[0]
+            acc_relevancy += (x1+x2).sum()
+        else:
+            x1= pos_embed[0].grad.float().sum(-1).cpu()[0]
+            x2= pos_embed[1].grad.float().sum(-1).cpu()[0]
+            acc_relevancy += (x1.sum()+x2.sum()) #(x1+x2).sum()
+    
+    max_logits.detach_().cpu() 
+    #print(max_logits.requires_grad == True)
+    relevance.detach_().cpu()
+    acc_relevancy.detach_().cpu()
+    max_indices.detach_().cpu()
+    model.zero_grad()
+    for pos_embed in position_embeddings:
+        pos_embed[0].detach_()
+        pos_embed[1].detach_()
+
+    res.append([max_logits,relevance,relevance+acc_relevancy ])
+    #print(acc_relevancy)
+    #print(relevance)
+    #print(max_logits)
+
+    #model.zero_grad()
+
+
+
+
+
+a_values = [item[0].item() for item in res]
+b_values = [item[1].item() for item in res]
+c_values = [item[2].item() for item in res]   
+# Create a figure and axis  
+plt.figure(figsize=(10, 8)) 
+ax = plt.gca()
+plt.scatter(a_values, b_values,  s=5, label='LRP')
+plt.scatter(a_values, c_values,  s=5, label='LRP+PE')
+
+
+
+a_min, a_max = min(a_values), max(a_values)
+margin = (a_max - a_min) * 0.1  # 10% margin
+plt.xlim(0.0, a_max + margin)
+plt.ylim(0.0, a_max + margin)
+
+tick_count = 4
+tick_step = (a_max - -2) / (tick_count - 1)
+tick_positions = np.arange(0.0, a_max + tick_step, tick_step)
+ax.set_xticks(tick_positions)
+ax.set_yticks(tick_positions)
+
+ax.tick_params(axis='x', labelsize=12)  # Very large font size for x-axis values
+ax.tick_params(axis='y', labelsize=12)  # Normal font size for y-axis values
+
+#plt.ylim(min(min(b_values), min(c_values)) - margin, max(max(b_values), max(c_values)) + margin)
+plt.xlabel(r'output $f$', fontsize=20)
+plt.ylabel(r'$\Sigma_{i} R(x_i)$', fontsize=20)
+
+
+line_range = np.linspace(0.0, a_max, 100)
+
+# Add the y=x line
+plt.plot(line_range, line_range, color='black', linestyle='-', linewidth=1)
+
+#plt.grid(True, linestyle='--', alpha=0.7)
+plt.legend()
+plt.savefig(f"conservation_total_{args.model_size}_{args.variant}.png")
+
+    #exit(1)    
+    #tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+    #tokens = clean_tokens(tokens)
 
     #print(tokens)
     #exit(1)
     #tokens = []
-    print("reached")
-    pdf_heatmap(tokens, relevance, path='heatmap.pdf', backend='xelatex')
-    exit(1)
+    #pdf_heatmap(tokens, relevance, path='heatmap.pdf', backend='xelatex')
+
 
        

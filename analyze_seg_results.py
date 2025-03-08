@@ -47,18 +47,38 @@ def parse_args():
     return args
 
 
-ALL_LRP_SUBDIRS = ['lrp', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full' ]
-ALL_FULL_LRP_SUBDIRS = [#'full_lrp_semiGammaLinear_alphaConv', 
+ALL_LRP_SUBDIRS = [#'lrp',
+                  #'custom_lrp'
+                   #'custom_lrp_gamma_rule_default_op', 
+                   #'custom_lrp_gamma_rule_full' ,
+                   #'custom_lrp_SEMANTIC_ONLY',
+                   'custom_lrp_PE_ONLY',
+                  #"custom_lrp_gamma_rule_full",
+                  #"custom_lrp_gamma_rule_full_SEMANTIC_ONLY",
+                  "custom_lrp_gamma_rule_full_PE_ONLY"
+                   
+                   
+                   ]
+ALL_FULL_LRP_SUBDIRS = [
+   
+   
+   #'full_lrp_GammaLinear_POS_ENC_PE_ONLY_gammaConv'
+   #'full_lrp_semiGammaLinear_alphaConv', 
                         #'full_lrp_GammaLinear_alphaConv',  
                         #'full_lrp_Linear_alphaConv', 
                         #'full_lrp_semiGammaLinear_gammaConv',
                         #'full_lrp_GammaLinear_gammaConv',  
                         #'full_lrp_Linear_gammaConv' ,
-                        #'full_lrp_semiGammaLinear_POS_ENC_alphaConv', 'full_lrp_GammaLinear_POS_ENC_alphaConv',  'full_lrp_Linear_POS_ENC_alphaConv',
-                        #'full_lrp_semiGammaLinear_POS_ENC_gammaConv', 'full_lrp_GammaLinear_POS_ENC_gammaConv',  'full_lrp_Linear_POS_ENC_gammaConv',
-                        'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv',
-                        'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv',   'full_lrp_Linear_POS_GRAD_ENC_alphaConv',
-                        'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv', 'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',  'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
+                        #'full_lrp_GammaLinear_POS_ENC_alphaConv'
+
+                        #'full_lrp_GammaLinear_POS_ENC_gammaConv',
+                        #'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',
+                        #  
+                        #'full_lrp_semiGammaLinear_POS_ENC_alphaConv', ,  'full_lrp_Linear_POS_ENC_alphaConv',
+                        #'full_lrp_semiGammaLinear_POS_ENC_gammaConv',   'full_lrp_Linear_POS_ENC_gammaConv',
+                        #'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv',
+                        #'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv',   'full_lrp_Linear_POS_GRAD_ENC_alphaConv',
+                        #'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv',  'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
                        
                        
                        ]
@@ -87,6 +107,7 @@ MAPPER_HELPER = {
    'attn act relu no cp': 'ReluAttention',
    'norm batch':           'RepBN (BatchNorm)',
    'custom_lrp': 'lrp',
+   'lrp': 'ours',
    'transformer_attribution': 'transformer attribution',
    'variant weight normalization': 'WeightNormalization',
    'variant diff attn': 'DiffTransformer',
@@ -128,6 +149,11 @@ MAPPER_HELPER = {
    'base small no bias':       'DeIT S w.o/ bias(T)',
    'basic medium no bias':     'DeIT B w.o/ bias(T)',
 
+   'custom_lrp_SEMANTIC_ONLY' :'attnLRP',
+   'custom_lrp_PE_ONLY': 'PA-LRP',
+   "custom_lrp_gamma_rule_full": 'ours (gamma rule)',
+   "custom_lrp_gamma_rule_full_SEMANTIC_ONLY" : 'attnLRP (gamma rule)',
+   "custom_lrp_gamma_rule_full_PE_ONLY" : 'PA-LRP (gamma rule)',
 
    'full_lrp_semiGammaLinear_alphaConv': r'(semi-$\gamma,\alpha$)' , 
    'full_lrp_GammaLinear_alphaConv': r'($\gamma,\alpha$)',  
@@ -146,7 +172,7 @@ MAPPER_HELPER = {
    'full_lrp_GammaLinear_POS_ENC_gammaConv': r'(pe,$\gamma,\gamma$)',  
    'full_lrp_Linear_POS_ENC_gammaConv': r'(pe,$\alpha\beta,\gamma$)',
 
-
+   'full_lrp_GammaLinear_POS_ENC_PE_ONLY_gammaConv': 'PE ONLY',
    
    'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv': r'(pge,semi-$\gamma,\alpha$)' , 
    'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv': r'(pge,$\gamma,\alpha$)',  
@@ -257,7 +283,10 @@ def run_segmentation(args):
 
     checkpoints =  get_sorted_checkpoints(model_dir)
 
-    suff = (args.method).split("_")[-1] if len(args.method) <26 else args.method
+    
+    #CHANGEHERE
+    suff = args.method 
+    #suff = (args.method).split("_")[-1] if len(args.method) <26 else args.method
 
     for c in checkpoints:
      
@@ -266,7 +295,7 @@ def run_segmentation(args):
        if filter_epochs(args, int(epoch), variant ) == False:
           continue
        print(f"working on epoch {epoch}")
-       seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
+       seg_results_dir = 'seg_results2' if args.threshold_type == 'mean' else f'seg_results2_{args.threshold_type}'
        eval_seg_epoch_cmd = f"{eval_seg_cmd} --output-dir {model_dir}/{seg_results_dir}/res_{epoch}_{suff}"
        eval_seg_epoch_cmd += f" --custom-trained-model {model_dir}/{checkpoint_path}" 
        print(f'executing: {eval_seg_epoch_cmd}')
@@ -281,13 +310,17 @@ def run_segmentation(args):
 
 
 def parse_seg_results(seg_results_path, method,variant, analyze_all_lrp = False, analyze_all_full_lrp = False):
-    suffixLst = [method.split("_")[-1] if len(args.method) <26 else args.method]
+    suffixLst = [args.method]
+    
+    #suffixLst = [method.split("_")[-1] if len(args.method) <26 else args.method]
     if analyze_all_lrp:
        suffixLst = [elem for elem in ALL_LRP_SUBDIRS]
     if analyze_all_full_lrp:
        suffixLst = [elem for elem in ALL_FULL_LRP_SUBDIRS]
        for i in range(len(suffixLst)):
-          suffixLst[i] = suffixLst[i].split("_")[-1] if len(suffixLst[i]) <26 else suffixLst[i]
+          suffixLst[i] =   suffixLst[i]
+          #CHANGEHERE
+          #suffixLst[i] = suffixLst[i].split("_")[-1] if len(suffixLst[i]) <26 else suffixLst[i]
 
     
    
@@ -334,7 +367,7 @@ def analyze(args):
    root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
 
    global_lst = []
-   seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
+   seg_results_dir = 'seg_results2' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
 
 
    for c in choices:

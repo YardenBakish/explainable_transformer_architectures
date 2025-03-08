@@ -119,18 +119,32 @@ def parse_args():
 
 
 
-ALL_LRP_SUBDIRS      = ['imagenet_norm_no_crop', 'custom_lrp_gamma_rule_full', 'custom_lrp_gamma_rule_default_op' ]
+ALL_CUSTOM_LRP_SUBDIRS = [#'imagenet_norm_no_crop', 
+                          #'custom_lrp_SEMANTIC_ONLY',
+                          #'custom_lrp_PE_ONLY',
+                          #"custom_lrp_gamma_rule_full",
+                          "custom_lrp_gamma_rule_full_SEMANTIC_ONLY",
+                          #"custom_lrp_gamma_rule_full_PE_ONLY",
+                          ]
+
+ALL_LRP_SUBDIRS      = ['imagenet_norm_no_crop', 
+                        'custom_lrp_gamma_rule_full', 
+                        'custom_lrp_gamma_rule_default_op' ]
 ALL_FULL_LRP_SUBDIRS = [#'full_lrp_semiGammaLinear_alphaConv', 
-                        'full_lrp_GammaLinear_alphaConv',  
-                        'full_lrp_Linear_alphaConv', 
+                        'full_lrp_GammaLinear_POS_ENC_PE_ONLY_gammaConv',
+   
+                        #'full_lrp_GammaLinear_alphaConv',  
+                        #'full_lrp_Linear_alphaConv', 
                         #'full_lrp_semiGammaLinear_gammaConv',
-                        'full_lrp_GammaLinear_gammaConv',  
+                        #'full_lrp_GammaLinear_gammaConv',  
+                        #'full_lrp_GammaLinear_POS_ENC_gammaConv', 
+                        #'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',
                         #'full_lrp_Linear_gammaConv',
                         # 'full_lrp_semiGammaLinear_POS_ENC_alphaConv', 'full_lrp_GammaLinear_POS_ENC_alphaConv',  'full_lrp_Linear_POS_ENC_alphaConv',
-                        #'full_lrp_semiGammaLinear_POS_ENC_gammaConv', 'full_lrp_GammaLinear_POS_ENC_gammaConv',  'full_lrp_Linear_POS_ENC_gammaConv',
+                        #'full_lrp_semiGammaLinear_POS_ENC_gammaConv',  'full_lrp_Linear_POS_ENC_gammaConv',
                         #'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv',
                         #'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv',   'full_lrp_Linear_POS_GRAD_ENC_alphaConv',
-                        #'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv', 'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',  'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
+                        #'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv',   'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
 
 
                          
@@ -278,7 +292,12 @@ MAPPER_HELPER = {
    'full_lrp_Linear_gammaConv': r'($\alpha\beta,\gamma$)',
 
 
-
+   'res_0_base'                      : 'ours',
+   'custom_lrp_SEMANTIC_ONLY' :'attnLRP',
+   'custom_lrp_PE_ONLY': 'PA-LRP',
+   "custom_lrp_gamma_rule_full": 'ours (gamma rule)',
+   "custom_lrp_gamma_rule_full_SEMANTIC_ONLY" : 'attnLRP (gamma rule)',
+   "custom_lrp_gamma_rule_full_PE_ONLY" : 'PA-LRP (gamma rule)',
 
    'full_lrp_semiGammaLinear_POS_ENC_alphaConv': r'(pe,semi-$\gamma,\alpha$)' , 
    'full_lrp_GammaLinear_POS_ENC_alphaConv': r'(pe,$\gamma,\alpha$)',  
@@ -287,7 +306,7 @@ MAPPER_HELPER = {
    'full_lrp_GammaLinear_POS_ENC_gammaConv': r'(pe,$\gamma,\gamma$)',  
    'full_lrp_Linear_POS_ENC_gammaConv': r'(pe,$\alpha\beta,\gamma$)',
 
-
+   'full_lrp_GammaLinear_POS_ENC_PE_ONLY_gammaConv': 'PE ONLY',
    'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv': r'(pge,semi-$\gamma,\alpha$)' , 
    'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv': r'(pge,$\gamma,\alpha$)',  
    'full_lrp_Linear_POS_GRAD_ENC_alphaConv' : r'(pge,$\alpha\beta,\alpha$)', 
@@ -452,12 +471,12 @@ def gen_latex_table(global_top_mapper,args, config):
 
 def set_correct_dir(args):
    if args.method != "custom_lrp":
-      pert_results_dir = f'pert_results/{args.method}' 
+      pert_results_dir = f'pert_results3/{args.method}' 
    else:
-      pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
+      pert_results_dir = 'pert_results3/imagenet_norm_no_crop' if args.default_norm else 'pert_results3'
    
    if args.grid:
-      pert_results_dir = f'pert_results/grid/{args.method}'
+      pert_results_dir = f'pert_results3/grid/{args.method}'
    return pert_results_dir
 
 def parse_pert_results(pert_results_path=None, acc_keys=None, args=None, metric=None, optional_method = None ):
@@ -471,15 +490,17 @@ def parse_pert_results(pert_results_path=None, acc_keys=None, args=None, metric=
  
     for res_dir in os.listdir(pert_results_path):
         res_path = os.path.join(pert_results_path, res_dir)
+   
+
         if os.path.isdir(res_path):
             # The key corresponds to the number in res_X
             if "res" not in res_dir:
                continue
+      
             res_key = int(res_dir.split('_')[1])
-            
             if res_key not in acc_keys:
                 continue
-            
+          
             if ((args.normalized_pert == 0 and "base" not in res_path) or (args.normalized_pert and "base" in res_path)):
                continue
             
@@ -493,7 +514,7 @@ def parse_pert_results(pert_results_path=None, acc_keys=None, args=None, metric=
 
                 pos_lists[res_key] = pert_data.get(f'{method}_pos_{metric}', [])
                 neg_lists[res_key] = pert_data.get(f'{method}_neg_{metric}', [])
-    
+   
     return pos_values, neg_values, pos_lists, neg_lists
 
 
@@ -693,14 +714,16 @@ def analyze(args):
        path_results_dirs_path = [pert_results_dir]
 
        if args.analyze_all_lrp:
-          path_results_dirs_path = [f'pert_results/{elem}' for elem in ALL_LRP_SUBDIRS]
-
+          path_results_dirs_path = []
+          for elem in ALL_CUSTOM_LRP_SUBDIRS:
+             path_results_dirs_path.append(f'pert_results3/{elem}')
+                
        if args.analyze_all_full_lrp and args.grid:
          path_results_dirs_path = set_grid_dirs(args)
  
           
        elif args.analyze_all_full_lrp:
-         path_results_dirs_path = [f'pert_results/{elem}' for elem in ALL_FULL_LRP_SUBDIRS]
+         path_results_dirs_path = [f'pert_results3/{elem}' for elem in ALL_FULL_LRP_SUBDIRS]
 
           
        
@@ -708,9 +731,12 @@ def analyze(args):
        
        for path_dir in path_results_dirs_path:
          pert_results_path = os.path.join(subdir, path_dir )
+      
          method = path_dir.split("/")[-1] if (args.analyze_all_lrp or args.analyze_all_full_lrp ) else None
          if method != None and method == "imagenet_norm_no_crop":
             method  = "custom_lrp"
+            pert_results_path = os.path.join(subdir, "pert_results3" )
+         
          pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(
                                                                        pert_results_path=pert_results_path, 
                                                                        acc_keys= acc_dict.keys(),args=args,
@@ -721,7 +747,7 @@ def analyze(args):
          if exp not in global_top_mapper:
             global_top_mapper[exp] = {}
 
-
+         print(f"\t{neg_dict.items()}")
          for key, neg_value in neg_dict.items():
            neg_list.append((neg_value, pos_dict[key], subdir, key, acc_dict[key]))
 

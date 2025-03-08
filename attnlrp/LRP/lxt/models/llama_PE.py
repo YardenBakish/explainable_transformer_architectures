@@ -282,6 +282,13 @@ def apply_rotary_pos_emb(q, k, cos, sin,detachPE, position_ids=None, unsqueeze_d
     # q_embed = (q * cos) + (rotate_half(q) * sin)
     # k_embed = (k * cos) + (rotate_half(k) * sin)
 
+    #print(detachPE)
+    #print(cos.shape)
+    #print(q.shape)
+    #print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n\n")
+
+
+
     if detachPE:
         q_embed = lf.add2(lf.mul2(q, cos.detach()), lf.mul2(rotate_half(q), sin.detach())) #### <---- LXT
         k_embed = lf.add2(lf.mul2(k, cos.detach()), lf.mul2(rotate_half(k), sin.detach())) #### <---- LXT
@@ -464,7 +471,9 @@ class LlamaDecoderLayer(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
 
-        self.self_attn = get_attention_layer(config.sequence_length ,config.attn_layer)(config=config, layer_idx=layer_idx)
+        self.self_attn =LlamaAttention(config=config, layer_idx=layer_idx) #   get_attention_layer(config.sequence_length ,config.attn_layer)(config=config, layer_idx=layer_idx)
+
+        #self.self_attn = get_attention_layer(config.sequence_length ,config.attn_layer)(config=config, layer_idx=layer_idx)
         
         self.mlp = LlamaMLP(config)
         self.input_layernorm = RMSNormIdentity(config.hidden_size, eps=config.rms_norm_eps)
@@ -979,6 +988,10 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         # Initialize weights and apply final processing
         self.post_init()
 
+
+    def get_input_pos_embeddings(self):
+        return self.model.rotary_emb
+    
     def get_input_embeddings(self):
         return self.model.embed_tokens
 
@@ -1007,6 +1020,8 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[torch.FloatTensor] = None,
+
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
@@ -1056,6 +1071,8 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
+            position_embeddings = position_embeddings,
+
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,

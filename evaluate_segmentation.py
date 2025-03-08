@@ -283,7 +283,7 @@ def eval_batch(image, labels, evaluator, index):
     if 'custom_lrp' in args.method:
 
 
-        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule,prop_rules = args.prop_rules,).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+        Res = lrp.generate_LRP(image.cuda(), method=args.method, cp_rule = args.cp_rule,prop_rules = args.prop_rules,).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
     
     elif args.method == 'rollout':
         Res = baselines.generate_rollout(image.cuda(), start_layer=1).reshape(batch_size, 1, 14, 14)

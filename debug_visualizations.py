@@ -92,8 +92,8 @@ def generate_visualization_RAP(original_image, class_index=None, epsilon_rule = 
     return vis
 
 
-def generate_visualization_custom_LRP(original_image, class_index=None, prop_rules = None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), prop_rules = prop_rules, method="custom_lrp", cp_rule=args.cp_rule,  index=class_index).detach()
+def generate_visualization_custom_LRP(original_image, class_index=None, method = None, prop_rules = None, i = None):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), prop_rules = prop_rules, method=method, cp_rule=args.cp_rule,  index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
@@ -104,6 +104,10 @@ def generate_visualization_custom_LRP(original_image, class_index=None, prop_rul
     image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
     image_transformer_attribution = (image_transformer_attribution - image_transformer_attribution.min()) / (image_transformer_attribution.max() - image_transformer_attribution.min())
     #print(transformer_attribution)
+
+    image_copy = 255 *image_transformer_attribution
+    image_copy = image_copy.astype('uint8')
+    Image.fromarray(image_copy, 'RGB').save(f'testing/visualizations_view/img_{i}.png')
    
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
     vis =  np.uint8(255 * vis)
@@ -196,9 +200,7 @@ def create_image_pdf(input_dir="testing/visualizations_view", output_pdf= "testi
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
 
-  parser.add_argument('--sample-path', 
-                        required = True,
-                        help='')
+ 
   parser.add_argument('--idx', 
                         type=int,
                         help='')
@@ -241,7 +243,6 @@ if __name__ == "__main__":
   save_dir = f"testing/visualizations_view"
   os.makedirs(f"testing/visualizations_view", exist_ok=True)
 
-  idx = args.idx
  
   if args.data_set == "IMNET100":
     args.nb_classes = 100
@@ -294,9 +295,12 @@ if __name__ == "__main__":
       method_name = "Att"
     elif "custom_lrp" in args.method:
 
-      vis = generate_visualization_custom_LRP(data, 
+      vis = generate_visualization_custom_LRP(data.squeeze(0), 
                                               args.class_index,
                                              prop_rules = args.prop_rules,
+                                             method = args.method,
+                                             i=batch_idx
+
                                               )
       method_name = "custom_lrp"
     else:

@@ -125,9 +125,9 @@ def compute_saliency_and_save(args):
             if 'custom_lrp' in args.method:
 
                  #print(data.shape[0])
-                 Res_pred   = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, prop_rules = args.prop_rules, index=None).reshape(data.shape[0],14, 14)
+                 Res_pred   = lrp.generate_LRP(data, method=args.method, cp_rule = args.cp_rule, prop_rules = args.prop_rules, index=None).reshape(data.shape[0],14, 14)
                  Res_pred=Res_pred.unsqueeze(1).detach()
-                 Res_target = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, prop_rules = args.prop_rules, index=target).reshape(data.shape[0],14, 14).unsqueeze(1).detach()
+                 Res_target = lrp.generate_LRP(data, method=args.method, cp_rule = args.cp_rule, prop_rules = args.prop_rules, index=target).reshape(data.shape[0],14, 14).unsqueeze(1).detach()
 
             if args.method == 'rollout':
                 print("FIXME: make sure which model is sent out for this method")

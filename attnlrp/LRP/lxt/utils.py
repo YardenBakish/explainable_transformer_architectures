@@ -17,10 +17,7 @@ def _generate_latex(words, relevances, cmap="bwr"):
 
     # Generate LaTeX code
     latex_code = r'''
-    \documentclass[arwidth=200mm]{standalone} 
-    \usepackage[dvipsnames]{xcolor}
-    
-    \begin{document}
+   
     \fbox{
     \parbox{\textwidth}{
     \setlength\fboxsep{0pt}
@@ -37,7 +34,7 @@ def _generate_latex(words, relevances, cmap="bwr"):
             latex_code += f' \\colorbox[RGB]{{{r},{g},{b}}}{{\\strut {word}}}'
 
 
-    latex_code += r'}}\end{document}'
+    latex_code += r'}}'
 
     return latex_code
 
@@ -54,17 +51,17 @@ def _compile_latex_to_pdf(latex_code, path='word_colors.pdf', delete_aux_files=T
     with open(path.with_suffix(".tex"), 'w') as f:
         f.write(latex_code)
 
-    # Use pdflatex to generate PDF file
-    if backend == 'pdflatex':
-        subprocess.call(['pdflatex', '--output-directory', path.parent, path.with_suffix(".tex")])
-    elif backend == 'xelatex':
-        subprocess.call(['xelatex', '--output-directory', path.parent, path.with_suffix(".tex")])
-
-    print("PDF file generated successfully.")
-
-    if delete_aux_files:
-        for suffix in ['.aux', '.log', '.tex']:
-            os.remove(path.with_suffix(suffix))
+    ## Use pdflatex to generate PDF file
+    #if backend == 'pdflatex':
+    #    subprocess.call(['pdflatex', '--output-directory', path.parent, path.with_suffix(".tex")])
+    #elif backend == 'xelatex':
+    #    subprocess.call(['xelatex', '--output-directory', path.parent, path.with_suffix(".tex")])
+#
+    #print("PDF file generated successfully.")
+#
+    #if delete_aux_files:
+    #    for suffix in ['.aux', '.log', '.tex']:
+    #        os.remove(path.with_suffix(suffix))
 
 
 def pdf_heatmap(words, relevances, cmap="bwr", path='heatmap.pdf', delete_aux_files=True, backend='xelatex'):

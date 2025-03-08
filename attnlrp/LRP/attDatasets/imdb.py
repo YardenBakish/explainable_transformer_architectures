@@ -9,7 +9,7 @@ import torch
 import os 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-def load_imdb(file ='datasets/imdb.csv' ):
+def load_imdb(file ='attDatasets/imdb.csv' ):
     
     df = pd.read_csv(file)
     df['sentiment_score'] = df.sentiment.apply(to_sentiment)
@@ -38,14 +38,23 @@ class MovieReviewDataset(Dataset):
     target = self.targets[item]
 
     encoding = self.tokenizer.encode_plus(
+      #review,
+      #add_special_tokens=True,
+      #max_length=self.max_len,
+      #return_token_type_ids=True,
+      #pad_to_max_length=True,
+      #return_attention_mask=True,
+      #return_tensors='pt',
+      #truncation = True
+
       review,
       add_special_tokens=True,
-      max_length=self.max_len,
+      #max_length=self.max_len,
       return_token_type_ids=True,
-      pad_to_max_length=True,
+      #pad_to_max_length=True,
       return_attention_mask=True,
       return_tensors='pt',
-      truncation = True
+      #truncation = True
     )
 
     return {

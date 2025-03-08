@@ -91,8 +91,9 @@ def generate_visualization_RAP(original_image, class_index=None, epsilon_rule = 
     return vis
 
 
-def generate_visualization_custom_LRP(original_image, class_index=None, prop_rules = None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), prop_rules = prop_rules, method="custom_lrp", cp_rule=args.cp_rule,  index=class_index).detach()
+def generate_visualization_custom_LRP(original_image, class_index=None, method = None,  prop_rules = None):
+   
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), prop_rules = prop_rules, method=method, cp_rule=args.cp_rule,  index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
@@ -229,10 +230,13 @@ if __name__ == "__main__":
     vis = generate_visualization_transformer_attribution(image_transformed, args.class_index)
     method_name = "Att"
   elif "custom_lrp" in args.method:
+    print(args.method)
+   
 
     vis = generate_visualization_custom_LRP(image_transformed, 
                                             args.class_index,
                                            prop_rules = args.prop_rules,
+                                           method = args.method
                                             )
     method_name = "custom_lrp"
   else:

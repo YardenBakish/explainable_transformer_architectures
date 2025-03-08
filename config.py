@@ -173,23 +173,31 @@ EPOCHS_TO_PERTURBATE = {
 
     'IMNET' : {
 
+
+        
+        'basic':          [0],           #TESTED
+        #'attn_act_relu_pos': [145],
+
+        'base_small': [0],
+        'basic_medium': [0],
+
         #BATCH 1
         #'norm_batch':     [0],
         #'attn_act_relu': [53],
         #'variant_simplified_blocks': [35,32],  #before: 32
         #'attn_act_sigmoid':  [65],   #before: 55
-        'basic':          [0],
-        'bias_ablation': [39],                            #TESTED
-        'attn_act_relu_no_cp': [80,88,70 ], #NOTICE IT WAS FOR DEF ,, 48,53,60, 70,
-        'variant_full_no_bias_relu': [56], #TESTED
-
-        'base_small': [0],
-        'basic_medium': [0],
-        'variant_registers': [720],
-        'base_small_no_bias':       [35],      #TESTED
-        'basic_medium_no_bias':     [15],      #TESTED
-        'medium_relu_full_no_bias': [30],    #TESTED
-        'small_relu_full_no_bias':  [30],     #TESTED
+        #'basic':          [0],
+        #'bias_ablation': [39],                            #TESTED
+        #'attn_act_relu_no_cp': [80,88,70 ], #NOTICE IT WAS FOR DEF ,, 48,53,60, 70,
+        #'variant_full_no_bias_relu': [56], #TESTED
+#
+        #'base_small': [0],
+        #'basic_medium': [0],
+        #'variant_registers': [720],
+        #'base_small_no_bias':       [35],      #TESTED
+        #'basic_medium_no_bias':     [15],      #TESTED
+        #'medium_relu_full_no_bias': [30],    #TESTED
+        #'small_relu_full_no_bias':  [30],     #TESTED
         
         #'medium_relu_attn': [20],
         #'small_relu_attn': [35],
@@ -246,28 +254,28 @@ EPOCHS_TO_PERTURBATE_FULL_LRP = {
         'basic':          [0],           #TESTED
         #'attn_act_relu_pos': [145],
 
-        #'base_small': [0],
-        #'basic_medium': [0],
+        'base_small': [0],
+        'basic_medium': [0],
         #'medium_relu_attn': [20],
         #'small_relu_attn': [35],
         ### no bias in conv
-        'bias_ablation': [39],                            #TESTED
+        #'bias_ablation': [39],                            #TESTED
         #'variant_complete_patch_embed_relu': [35],
         #'variant_refined_patch_embed': [35],
         #'variant_patch_embed_relu': [130],
         #'variant_patch_embed': [85],
       
 
-        'variant_simplified_blocks': [35,32],                #TESTED
-        'variant_diff_attn_relu': [155],                  #TESTED
-        'attn_act_relu_no_cp': [80 ], #TESTED
+        #'variant_simplified_blocks': [35,32],                #TESTED
+        #'variant_diff_attn_relu': [155],                  #TESTED
+        #'attn_act_relu_no_cp': [80 ], #TESTED
 
-        'variant_registers': [965],           #TESTED
+        #'variant_registers': [965],           #TESTED
         #'variant_more_ffn': [170,155],
 
         #'variant_refined_patch_embed_relu': [95],
 
-        'variant_full_no_bias_relu': [56], #TESTED
+        #'variant_full_no_bias_relu': [56], #TESTED
         #'variant_no_bias_relu': [56],
         #'variant_relu_plus_conv': [35],
 
@@ -277,11 +285,11 @@ EPOCHS_TO_PERTURBATE_FULL_LRP = {
 
         #'medium_relu_attn_w_bias' : [35],
         #'small_relu_attn_w_bias':  [35],
-        'medium_relu_full_no_bias': [30],    #TESTED
-        'small_relu_full_no_bias':  [30],     #TESTED
+        #'medium_relu_full_no_bias': [30],    #TESTED
+        #'small_relu_full_no_bias':  [30],     #TESTED
         #'variant_relu_relu':        [88],
-        'base_small_no_bias':       [35],      #TESTED
-        'basic_medium_no_bias':     [15],      #TESTED
+        #'base_small_no_bias':       [35],      #TESTED
+        #'basic_medium_no_bias':     [15],      #TESTED
 
 
 
@@ -290,7 +298,7 @@ EPOCHS_TO_PERTURBATE_FULL_LRP = {
 
         ##'variant_gated_patch_embed_relu': [375],
         ##'variant_gated_patch_embed': [190],
-        'variant_layer_scale': [43],              #TESTED
+        #'variant_layer_scale': [43],              #TESTED
         #'variant_layer_scale_relu_attn': [100],
 
 
@@ -308,27 +316,27 @@ EPOCHS_TO_SEGMENTATION_FULL_LRP = {
         'basic_medium': [0],
         #'medium_relu_attn': [20],
         #'small_relu_attn': [35],
-        'variant_refined_patch_embed': [35],          #TESTED
+        #'variant_refined_patch_embed': [35],          #TESTED
         #'variant_patch_embed_relu': [130],
         #'variant_patch_embed': [85],
     #
         #'variant_refined_patch_embed_relu': [95],
     #
-        'bias_ablation': [39],                #TESTED
+        #'bias_ablation': [39],                #TESTED
         #'variant_complete_patch_embed_relu': [35],
         #'variant_simplified_blocks': [35,32],
         #'variant_diff_attn_relu': [155],
         #'attn_act_relu_no_cp': [80,88 ],
-        'variant_registers': [965],               #TESTED
+        #'variant_registers': [965],               #TESTED
         #'variant_more_ffn': [170,155],
 
-        'variant_full_no_bias_relu': [56],           #TESTED
+        #'variant_full_no_bias_relu': [56],           #TESTED
         #'variant_no_bias_relu': [56],
-        'variant_relu_plus_conv': [35],            #TESTED
+        #'variant_relu_plus_conv': [35],            #TESTED
 
 
         ####################################################################
-        'medium_relu_attn_w_bias' : [35],                 #TESTED
+        #'medium_relu_attn_w_bias' : [35],                 #TESTED
         #'small_relu_attn_w_bias':  [35],
         #'medium_relu_full_no_bias': [30],
         #'small_relu_full_no_bias':  [30],
@@ -345,31 +353,31 @@ EPOCHS_TO_SEGMENTATION_FULL_LRP = {
 
 EPOCHS_TO_SEGMENTATION = {
        #BATCH 1
-        'norm_batch':     [0],
-        'attn_act_relu': [53],
-        'variant_simplified_blocks': [35,32],  #before: 32
-        'attn_act_sigmoid':  [65],   #before: 55
-        'attn_act_relu_no_cp': [48,53,60,70,80,88],
-        'act_softplus':      [18],
+        #'norm_batch':     [0],
+        #'attn_act_relu': [53],
+        #'variant_simplified_blocks': [35,32],  #before: 32
+        #'attn_act_sigmoid':  [65],   #before: 55
+        #'attn_act_relu_no_cp': [48,53,60,70,80,88],
+        #'act_softplus':      [18],
 
        #BATCH 2
-        'variant_weight_normalization': [240,245],
-        'norm_rms':       [4],
-        'basic':          [0],
-        'variant_more_ffn': [155,170],
+        #'variant_weight_normalization': [240,245],
+        #'norm_rms':       [4],
+        #'basic':          [0],
+        #'variant_more_ffn': [155,170],
 
-        'variant_more_attn': [470],
+        #'variant_more_attn': [470],
        ### 'variant_diff_attn': [110],
-        'variant_diff_attn_relu': [155],
+        #'variant_diff_attn_relu': [155],
        #BATCH 3
 
-       'variant_layer_scale': [43],
-       'attn_act_relu_pos': [145],
+       #'variant_layer_scale': [43],
+       #'attn_act_relu_pos': [145],
 
 
-       'act_relu' : [35],
-       'attn_act_relu_normalized': [5],
-       'variant_relu_softmax': [19],
+       #'act_relu' : [35],
+       #'attn_act_relu_normalized': [5],
+       #'variant_relu_softmax': [19],
 
 
 
@@ -378,22 +386,28 @@ EPOCHS_TO_SEGMENTATION = {
 
         #BATCH 4
 
-        'variant_more_attn_relu': [265],
-        'variant_registers': [720],
+        #'variant_more_attn_relu': [265],
+        #'variant_registers': [720],
         ###'variant_patch_embed_relu': [95],
         ###'variant_patch_embed': [50],
-        'variant_layer_scale_relu_attn': [100],
+        #'variant_layer_scale_relu_attn': [100],
 
 
-        'variant_drop_high_norms_preAct': [0],
+        #'variant_drop_high_norms_preAct': [0],
         #'variant_drop_high_norms_postAct': [0],
-        'variant_drop_high_norms_relu':    [70,80], #14,40,50,60,
+        #'variant_drop_high_norms_relu':    [70,80], #14,40,50,60,
 
 
 
 
-        'bias_ablation': [19],
-        'attn_act_sparsemax': [80]
+        #'bias_ablation': [19],
+        #'attn_act_sparsemax': [80]
+
+
+        'basic':          [0],           #TESTED
+        #'attn_act_relu_pos': [145],
+        'base_small': [0],
+        'basic_medium': [0],
 
 }
 
@@ -425,14 +439,21 @@ XAI_METHODS = ['rollout', 'lrp', 'transformer_attribution', 'attribution_with_de
                'full_lrp_semiGammaLinear_gammaConv', 'full_lrp_GammaLinear_gammaConv',  'full_lrp_Linear_gammaConv',
                'lrp_last_layer',
                 'attn_last_layer', 'attn_gradcam',
-                'custom_lrp', 'custom_lrp_epsilon_rule',
-                'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full',
+                 'custom_lrp_epsilon_rule',
+                'custom_lrp_gamma_rule_default_op', 
+
+                'full_lrp_GammaLinear_POS_ENC_PE_ONLY_gammaConv',
+
+                'custom_lrp_gamma_rule_full', 'custom_lrp_gamma_rule_full_PE_ONLY', 'custom_lrp_gamma_rule_full_SEMANTIC_ONLY',
+                'custom_lrp', 'custom_lrp_PE_ONLY',  'custom_lrp_SEMANTIC_ONLY', 
 
                'full_lrp_semiGammaLinear_POS_ENC_alphaConv', 'full_lrp_GammaLinear_POS_ENC_alphaConv',  'full_lrp_Linear_POS_ENC_alphaConv',
                'full_lrp_semiGammaLinear_POS_ENC_gammaConv', 'full_lrp_GammaLinear_POS_ENC_gammaConv',  'full_lrp_Linear_POS_ENC_gammaConv',
 
                'full_lrp_semiGammaLinear_POS_GRAD_ENC_alphaConv', 'full_lrp_GammaLinear_POS_GRAD_ENC_alphaConv',  'full_lrp_Linear_POS_GRAD_ENC_alphaConv',
                'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv', 'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',  'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
+               'full_lrp_semiGammaLinear_POS_GRAD_ENC_gammaConv', 'full_lrp_GammaLinear_POS_GRAD_ENC_gammaConv',  'full_lrp_Linear_POS_GRAD_ENC_gammaConv',
+
                 ]
 
 

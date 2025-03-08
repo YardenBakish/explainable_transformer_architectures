@@ -458,11 +458,35 @@ class VisionTransformer(nn.Module):
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method   == "custom_lrp":
-            #(cam, pos_cam) = self.add.relprop(cam, **kwargs)
+        if "custom_lrp" in method:
+            
+            (sem_cam, pos_cam) = self.add.relprop(cam, **kwargs)
+
+            ''' if "PE_ONLY" not in method and "SEMANTIC_ONLY" not in method:
+                #print("SDFSDF")
+                #exit(1)
+                cam = pos_cam
+
+                
+                #sem_cam = sem_cam[:, 1:, :]
+                #pos_cam = pos_cam[:, 1:, :]
+#
+                #norms1 = torch.norm(sem_cam, p=2, dim=-1)  # Shape: [196]
+                #norms2 = torch.norm(pos_cam, p=2, dim=-1)  # Shape: [196]
+                #
+                #norms1 = (norms1 - norms1.min()) / (norms1.max() - norms1.min())
+                #norms2 = (norms2 - norms2.min()) / (norms2.max() - norms2.min())
+                #return norms1+norms2'''
+            
+            if "PE_ONLY" in method:
+                cam = pos_cam
+            if "SEMANTIC_ONLY" in method:
+                #print("semantic")
+                cam = sem_cam
             cam = cam[:, 1:, :]
             #FIXME: slight tradeoff between noise and intensity of important features
             #cam = cam.clamp(min=0)
+            
             norms = torch.norm(cam, p=2, dim=-1)  # Shape: [196]
             return norms
 
@@ -499,6 +523,8 @@ class VisionTransformer(nn.Module):
 
                         pe_att[:, start_i:start_i+16, start_j:start_j+16] = value 
                 
+
+
                 return (pe_att+cam).clamp(min=0)
                 
                 
@@ -522,7 +548,9 @@ class VisionTransformer(nn.Module):
                         value = value.view(-1, 1, 1)  # shape: [32, 1, 1]
 
                         pe_att[:, start_i:start_i+16, start_j:start_j+16] = value 
-                
+                if "PE_ONLY" in method:
+                    print("here")
+                    return (pe_att).clamp(min=0)
                 return (pe_att+cam).clamp(min=0)
 
             cam = cam.clamp(min=0)

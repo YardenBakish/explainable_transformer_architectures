@@ -1,15 +1,22 @@
+import os
+os.environ['TRANSFORMERS_CACHE'] = '/home/ai_center/ai_users/yardenbakish/'
+os.environ['HF_HOME'] = '/home/ai_center/ai_users/yardenbakish/'
+
+ANSWERS  = {'A': 0, 'B': 1, 'C': 2,'D': 3}
+
+
 import transformers
 import torch
 from transformers import AutoTokenizer
 from transformers import BitsAndBytesConfig, AdamW, get_linear_schedule_with_warmup
 import config
 import matplotlib.pyplot as plt
-from lxt.models.llama_PE import LlamaForCausalLM, attnlrp, LlamaForTokenClassification, LlamaForSequenceClassification
+from lxt.models.llama_PE import LlamaForCausalLM, attnlrp
 from helper_scripts.helper_functions import update_json
-from attDatasets.imdb import load_imdb, MovieReviewDataset, create_data_loader
+from attDatasets.ai2_arc import load_ai2_arc, AI2_ARC_Dataset, create_data_loader
 from tqdm import tqdm
 from lxt.utils import pdf_heatmap, clean_tokens
-from utils import flip, get_latest_checkpoint
+from utils import flip_arc, get_latest_checkpoint
 from sklearn.metrics import auc
 
 import numpy as np
@@ -37,31 +44,45 @@ parser.add_argument('--model-size', type=str,
                         choices=['llama_2_7b', 'llama_tiny'],
                        required = True,
                         help='')
-parser.add_argument('--variant', type=str,
-                       default="baseline")
+
 parser.add_argument('--fract', type=float,
                         default=0.3,
                         help='')
 parser.add_argument('--pe', action='store_true')
 parser.add_argument('--reform', action='store_true')
+parser.add_argument('--should-keep', action='store_true')
+
 
 parser.add_argument('--pe_only', action='store_true')
 parser.add_argument('--quant', action='store_true')
 
 
-parser.add_argument('--sequence-length', type=int,
-                       )
-parser.add_argument('--trained_model', type=str,)
 
 args = parser.parse_args()
-args.dataset = 'imdb'
+
 
 if (args.pe_only and not args.pe) or (args.reform and not args.pe):
     print("no")
     exit(1)
 
-config.get_config(args, pert=True)
-save_dir = f'{args.pretrained_model_path}/no_pad/pert_results'
+
+path = "meta-llama/Llama-3.1-8B-Instruct"
+
+if args.model_size == 'llama_tiny':
+    path = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+if args.model_size == 'llama_2_7b':
+    path = f"original_models/{args.model_size}/vanilla" 
+
+
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=torch.bfloat16, # use bfloat16 to prevent numerical overflow
+)
+
+model_dir = f"{args.model_size}" if args.quant == False else f"{args.model_size}_QUANT"
+model_dir = f"{model_dir}_KEEP" if args.should_keep == True else model_dir
+
+save_dir = f'finetuned_models/{model_dir}/pert_results_arc'
 os.makedirs(save_dir, exist_ok=True)
 
 
@@ -70,73 +91,36 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
-PATH = args.original_models
+
 MAX_LEN = 512
 BATCH_SIZE = 1
-
-if args.model_size == 'llama_tiny': 
-    model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
-if args.model_size == 'llama_2_7b':
-    model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline/best_checkpoint/pytorch_model.bin"
-    if args.variant == "baseline2":
-        model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline2/best_checkpoint/pytorch_model.bin"
-
-
-
-tokenizer = AutoTokenizer.from_pretrained(PATH)
-tokenizer.pad_token = tokenizer.eos_token
-tokenizer.padding_side = "right"
-
-compute_dtype = getattr(torch, "float16")
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True, 
-    bnb_4bit_quant_type="nf4", 
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-)
-
-#original
-
+#print(path)
+#exit(1)
 if args.quant:
-    llamaModel = LlamaForSequenceClassification.from_pretrained(PATH, torch_dtype=torch.bfloat16, device_map="cuda", quantization_config=bnb_config, attn_implementation="eager")
+    model = LlamaForCausalLM.from_pretrained(path, torch_dtype=torch.bfloat16,quantization_config=quantization_config, device_map="cuda", attn_implementation="eager", low_cpu_mem_usage = True)
+#model = LlamaForCausalLM.from_pretrained(path, quantization_config=quantization_config, torch_dtype=torch.bfloat16, device_map="cuda")
 else:
-    llamaModel = LlamaForSequenceClassification.from_pretrained(PATH,  device_map="cuda",  attn_implementation="eager")
-#torch_dtype=torch.bfloat16,
-
-
-conf = llamaModel.config
-conf.num_labels = 2
-conf.pad_token_id = tokenizer.pad_token_id
-
-#sequence_length = args.sequence_length
-#current
-#kwargs = {"attn_layer": args.attn_layer, "sequence_length": sequence_length }
-#last_checkpoint_dir = get_latest_checkpoint(args.pretrained_model_path)
-#last_checkpoint = f'{last_checkpoint_dir}/pytorch_model.bin' 
-
-
-model = LlamaForSequenceClassification.from_pretrained(model_checkpoint, config = conf,  torch_dtype=torch.bfloat16, device_map="cuda")
-
-model.to(device)
+    model = LlamaForCausalLM.from_pretrained(path, device_map="cuda", torch_dtype=torch.bfloat16,   attn_implementation="eager")
 
 
 
+tokenizer = AutoTokenizer.from_pretrained(path)
 
-df = load_imdb()
-df_train, df_test = train_test_split(df, test_size=args.fract, random_state=RANDOM_SEED)
-test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE)
 
-# optional gradient checkpointing to save memory (2x forward pass)
+#model.to(device)
+
+
 model.gradient_checkpointing_enable()
-
-# apply AttnLRP rules
 attnlrp.register(model)
 
+df = load_ai2_arc()
+test_data_loader = create_data_loader(df, tokenizer, MAX_LEN, BATCH_SIZE)
 
 UNK_token = tokenizer.unk_token_id
 fracs = np.linspace(0.,1.,11)
-
 for flip_case in ['generate', 'pruning']:
+    samples_num = 0
+
     all_flips = {}
     all_flips_str = {}
 
@@ -145,7 +129,7 @@ for flip_case in ['generate', 'pruning']:
     M, E, E_LOGIT, INSERT_LEAST_IMPORTANT, INSERT_LEAST_IMPORTANT_LOGIT,   EVOLUTION = [],[], [], [],[], []
     M_str,E_str, EVOLUTION_str = [],[], []
 
-    for d in tqdm(test_data_loader):
+    for i, d in enumerate(tqdm(test_data_loader)):
     
 
         input_ids = d["input_ids"].to(device)
@@ -164,23 +148,34 @@ for flip_case in ['generate', 'pruning']:
             position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
             position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
 
-            outputs = model(
+            output_logits = model(
                 inputs_embeds = input_embeds.requires_grad_(),
                 position_embeddings = position_embeddings,
                 #input_ids=input_ids,
                 use_cache=False,
-                attention_mask=attention_mask
-              )['logits']
+                #attention_mask=attention_mask
+              ).logits
         else:
-            outputs = model(
+            output_logits = model(
                 inputs_embeds = input_embeds.requires_grad_(),
                 use_cache=False,
-                attention_mask=attention_mask
-              )['logits']
+                #attention_mask=attention_mask
+              ).logits
     
-
-        max_logits, max_indices = torch.max(outputs, dim=1)
-   
+        #print(output_logits[0, -1, :].shape)
+        #exit(1)
+        max_logits, max_indices = torch.max(output_logits[0, -1, :], dim=-1)
+       
+        next_token_id = max_indices.item() 
+        next_token = tokenizer.convert_ids_to_tokens(next_token_id)
+        if next_token.replace("▁", "") not in ANSWERS:
+            continue
+        if targets.item() !=  ANSWERS[next_token.replace("▁", "")]:
+            #print(f"{i}, {flip_case}, {samples_num}, {targets.item()}, {next_token}" )
+            continue
+        samples_num+=1
+        #if (samples_num >=20):
+        #    break
         max_logits.backward(max_logits)
         relevance = input_embeds.grad.float().sum(-1).cpu()[0] 
         relevance = relevance / relevance.abs().max()
@@ -208,7 +203,9 @@ for flip_case in ['generate', 'pruning']:
 
 
         tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-
+        
+        #print(tokens)
+        #exit(1)
         '''
         tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
         tokens = clean_tokens(tokens)
@@ -221,26 +218,29 @@ for flip_case in ['generate', 'pruning']:
 
         
 
-        m, e, e_logit, evolution, less_relevantArr, less_relevantArr_logit = flip(model,
+        m, e, e_logit, evolution, less_relevantArr, less_relevantArr_logit = flip_arc(model,
                               x=relevance, 
+                              highest_idx = next_token_id,
+                              logit0 = max_logits.detach().item(),
                              token_ids=input_ids, 
                              tokens=tokens,
                              y_true=targets, 
+                             should_keep = args.should_keep,
                              attention_mask = attention_mask,
                              fracs=fracs, 
                              flip_case=flip_case,
                              tokenizer=tokenizer,
-                             device=device)
+                             device=device,
+                             )
 
        
         M.append(m)
         E.append(e)
-
-   
         E_LOGIT.append(e_logit)
         if less_relevantArr != []:
             INSERT_LEAST_IMPORTANT.append(less_relevantArr)
             INSERT_LEAST_IMPORTANT_LOGIT.append(less_relevantArr_logit)
+
 
         EVOLUTION.append(evolution)
 
@@ -269,16 +269,32 @@ for flip_case in ['generate', 'pruning']:
         pe = "_peOnly"
     if args.reform:
         pe = "_peReform"
-    f.savefig(f'{save_dir}/imdb_{flip_case}_{pe}.png' , dpi=300)
-    #update_json(f'imdb_{flip_case}.json', all_flips_str)
-    
+    f.savefig(f'{save_dir}/vis_{flip_case}_{pe}.png' , dpi=300)
 
 
     if flip_case == "generate":
-           update_json(f'{save_dir}/imdb_pert_res_{pe}.json', {f'{flip_case}_AU_MSE': auc(fracs, np.nanmean(v['M'], axis=0)), 'pe': args.pe, 'pe_only': args.pe_only, 'reform': args.reform, 'quant': args.quant,
+        f, axs = plt.subplots(1, 2, figsize=(14, 8))
+        for k, v in all_flips.items():
+            axs[0].plot(np.nanmean(v['E_LOGIT'], axis=0), label=k)
+            axs[0].set_title('MERF_INSERTION')
+            axs[1].plot(np.nanmean(v['INSERT_LEAST_IMPORTANT_LOGIT'], axis=0), label=k)
+            axs[1].set_title('LERF_INSERTION')    
+        plt.legend()
+
+  
+        pe = "_pe" if args.pe else ""
+        if args.pe_only:
+            pe = "_peOnly"
+        if args.reform:
+            pe = "_peReform"
+        f.savefig(f'{save_dir}/logits_{flip_case}_{pe}.png' , dpi=300)
+
+        update_json(f'{save_dir}/imdb_pert_res_{pe}.json', {f'{flip_case}_AU_MSE': auc(fracs, np.nanmean(v['M'], axis=0)), 'samples_num': samples_num, 'pe': args.pe, 'pe_only': args.pe_only, 'reform': args.reform, 'quant': args.quant,
                                         f'{flip_case}_AU_AC': auc(fracs, np.nanmean(v['E'], axis=0)), f'MERF': auc(fracs, np.nanmean(v['E_LOGIT'], axis=0)), f'LERF': auc(fracs, np.nanmean(v['INSERT_LEAST_IMPORTANT_LOGIT'], axis=0))})
-           continue
-    update_json(f'{save_dir}/imdb_pert_res_{pe}.json', {f'{flip_case}_AU_MSE': auc(fracs, np.nanmean(v['M'], axis=0)),
+        continue
+
+    #update_json(f'imdb_{flip_case}.json', all_flips_str)
+    update_json(f'{save_dir}/imdb_pert_res_{pe}.json', {f'{flip_case}_AU_MSE': auc(fracs, np.nanmean(v['M'], axis=0)), 'samples_num': samples_num, 'pe': args.pe, 'pe_only': args.pe_only, 'reform': args.reform, 'quant': args.quant,
                                         f'{flip_case}_AU_AC': auc(fracs, np.nanmean(v['E'], axis=0))})
 
     #pickle.dump(all_flips, open(os.path.join(save_dir, 'all_flips_{}_imdb.p'.format(flip_case)), 'wb'))
