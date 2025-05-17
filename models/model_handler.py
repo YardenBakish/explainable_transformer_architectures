@@ -8,6 +8,11 @@ from models.model_train import deit_tiny_patch16_224 as vit_LRP_train
 from models.model_train import deit_base_patch16_224 as vit_LRP_base_train
 from models.model_train import deit_small_patch16_224 as vit_LRP_small_train
 
+from models.variant_vit_rope.variant_model_vit_rope import rope_mixed_deit_small_patch16_LS as model_variant_rope
+#rope_mixed_deit_small_patch16_LS
+#rope_axial_deit_small_patch16_LS
+#rope_axial_ape_deit_small_patch16_LS
+#rope_mixed_ape_deit_small_patch16_LS
 
 
 from models.variant_light_attention.variant_model_light_attn_train import deit_tiny_patch16_224 as model_variant_light_attention_train
@@ -60,6 +65,9 @@ from models.variant_drop_high_norms.variant_model_drop_high_norms import deit_ti
 
 def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
     
+    if args.variant == 'variant_rope':
+        return model_variant_rope(pretrained=True)
+
     if 'model_RAP_test' in args.variant:
         return  vit_LRP_rap_test(
             isWithBias           = args.model_components["isWithBias"],

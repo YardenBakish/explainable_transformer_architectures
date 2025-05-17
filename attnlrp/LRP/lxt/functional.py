@@ -168,6 +168,27 @@ def mul2(input_a, input_b, inplace=False):
 
 
 @torch.fx.wrap
+def mulCustom(input_a, input_b, inplace=False):
+    """
+    Uniform LRP rule for elementwise multiplication (along all dimensions) of two tensors according to Proposition 3.2 of the paper
+    'AttnLRP: Attention-Aware Layer-wise Relevance Propagation for Transformers'
+
+    If one of the inputs is a constant or does not require gradients, the relevance is distributed 100% to the other input.
+
+    Parameters:
+    -----------
+    input_a: torch.Tensor
+        The first input tensor
+    input_b: torch.Tensor
+        The second input tensor
+    inplace: bool
+        Whether to perform the operation in place during the backward pass, will overwrite the relevance at the output
+    """
+    return mulCustom_fn.apply(input_a, input_b, inplace)
+
+
+
+@torch.fx.wrap
 def mulPos(input_a, input_b, inplace=False):
     '''
     used for propogating positional relevance
@@ -598,6 +619,35 @@ class mul2_fn(Function):
         # only return relevance at requires_grad indices else None
         return tuple(out_relevance if i in ctx.requires_grads else None for i in range(2)) + (None,)
 
+
+
+
+
+class mulCustom_fn(Function):
+   
+
+
+    @staticmethod
+    def forward(ctx, input_a, input_b, inplace=False):
+
+        ctx.requires_grads = [i for i, inp in enumerate((input_a, input_b)) if isinstance(inp, torch.Tensor) and inp.requires_grad]
+        ctx.inplace = inplace
+
+        return input_a * input_b
+
+    @staticmethod
+    @conservation_check_wrap
+    def backward(ctx, *out_relevance):
+
+        n_required = len(ctx.requires_grads)
+
+        if ctx.inplace:
+            out_relevance = out_relevance[0].div_(n_required)
+        else:
+            out_relevance = out_relevance[0] / n_required
+
+        # only return relevance at requires_grad indices else None
+        return tuple(out_relevance if i in ctx.requires_grads else None for i in range(2)) + (None,)
 
 
 class mulPos_fn(Function):

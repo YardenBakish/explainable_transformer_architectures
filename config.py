@@ -142,6 +142,7 @@ MODEL_VARIANTS = {
             'attn_act_relu_w_4registers'     :  {**DEFAULT_MODEL,  'num_registers': 4, 'isWithBias': False, 'isConvWithBias': False,  'attn_activation': ReluAttention()}, #'isWithBias': False,  'attn_activation': ReluAttention(), 'activation': Softplus(),
           
             ####################################################################################################################################
+            'variant_rope'     :  {**DEFAULT_MODEL}, #'isWithBias': False,  'attn_activation': ReluAttention(), 'activation': Softplus(),
 
 
 }

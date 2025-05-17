@@ -33,7 +33,6 @@ IMGS = [
 "val/n01440764/ILSVRC2012_val_00046252.JPEG",
 "val/n01985128/ILSVRC2012_val_00032174.JPEG",]
 
-
 # create heatmap from mask on image
 def show_cam_on_image(img, mask):
    
@@ -194,9 +193,11 @@ if __name__ == "__main__":
                       hooks = True,
                     )
         #model_LRP.head = torch.nn.Linear(model_LRP.head.weight.shape[1],100)
-  checkpoint = torch.load(args.custom_trained_model, map_location='cpu')
+  if args.variant != 'variant_rope':
+ 
+    checkpoint = torch.load(args.custom_trained_model, map_location='cpu')
+    model.load_state_dict(checkpoint['model'], strict=False)
 
-  model.load_state_dict(checkpoint['model'], strict=False)
   model.cuda()
   model.eval()
   attribution_generator = LRP(model)
@@ -205,7 +206,7 @@ if __name__ == "__main__":
 
   output = model(image_transformed.unsqueeze(0).cuda())
   print_top_classes(output)
-
+  #exit(1)
   filename = os.path.basename(args.sample_path)
     # Remove the file extension
   img_name = os.path.splitext(filename)[0]

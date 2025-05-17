@@ -10,9 +10,6 @@ DEFAULT_PATHS = {
 }
 
 
-
-
-
 #chosen randmoly
 EPOCHS_TO_PERTURBATE = {
 
@@ -20,21 +17,15 @@ EPOCHS_TO_PERTURBATE = {
 
 
 
-
-
 MODEL_VARIANTS = {
     'baseline': {'components_with_grad': {'all': True, 'components': ["score.weight"]}},
     'baseline2': {'components_with_grad': {'all': False, 'components': ["score.weight"]}},
-
     'attn_act_relu': {'components_with_grad': {'all': True, 'components': []}},
     'attn_act_relu2': {'components_with_grad': {'all': True, 'components': []}}, #
     'attn_act_relu3': {'components_with_grad': {'all': True, 'components': []}},
     'attn_act_relu4': {'components_with_grad': {'all': True, 'components': []}},
-
-
     'attn_act_sigmoid': {'components_with_grad': {'all': True, 'components': []}},
     'attn_act_sigmoid2': {'components_with_grad': {'all': True, 'components': []}},
-
     'baseline_full': {'components_with_grad': {'all': False, 'components': ["score.weight"], 'partial_unfreeze': 21}},
 
 
@@ -67,7 +58,26 @@ def get_config(args, pert = False):
 
 
 
+    args.ext = f"{args.model_size}" if args.quant== False else f"{args.model_size}_quant"
+    
+
     if pert:
+
+        if args.dataset == 'imdb':
+            if args.model_size == 'llama_tiny': 
+                args.model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
+            if args.model_size == 'llama_2_7b':
+                args.model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline/best_checkpoint/pytorch_model.bin"
+            if args.variant == "baseline2":
+                args.model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline2/best_checkpoint/pytorch_model.bin"
+        else:
+            args.model_checkpoint = "meta-llama/Llama-3.1-8B-Instruct"
+            if args.model_size == 'llama_tiny':
+                args.model_checkpoint = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+            if args.model_size == 'llama_2_7b':
+                args.model_checkpoint = f"original_models/{args.model_size}/vanilla" 
+        
+        
         return
     if args.finetune:
         if args.finetune not in MODEL_VARIANTS:

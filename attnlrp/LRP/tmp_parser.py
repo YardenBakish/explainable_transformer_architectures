@@ -79,16 +79,16 @@ for i in range(len(bottom_lst)):
 
 group_labels2 = ["First", "Intermediate", "Penultimate"]
 group_labels2 = group_labels
-fig, ax = plt.subplots(figsize=(20, 15))
+fig, ax = plt.subplots(figsize=(28, 22))
 group_labels = ["First", "Intermediate", "Penultimate"]
 bar_labels = group_labels * 3
-ax.set_xticks(positions, bar_labels, rotation=45, ha='right', fontsize=31, fontweight='bold')
+ax.set_xticks(positions, bar_labels, rotation=45, ha='right', fontsize=48)
 
 max_height = max([(b+u) for b, u in zip(bottom_lst, upper_lst)])
 label_height = max_height * 1.05  # Position labels slightly above the tallest bar
 
 for i, pos in enumerate(group_positions):
-    ax.text(pos, label_height, group_labels2[i], ha='center', fontsize=32, fontweight='bold')
+    ax.text(pos, label_height, group_labels2[i], ha='center', fontsize=51, fontweight='bold')
 
 #colors = [(0,0,0.9), (0,0,0.95) ,(0,0,1.0)]  # Colors to repeat
 #color_list = [colors[i % len(colors)] for i in range(len(bottom_lst))] 
@@ -102,10 +102,9 @@ ax.bar(positions,  upper_lst, bottom=bottom_lst,  label='PE Only' ,zorder=2)
 #ax.set_title('Conservation of Relevancy out of 100%\nMean across the IMDB dataset')
 #ax.set_xticks([])
 ax.yaxis.grid(True, linestyle='-', alpha=0.5,zorder=0)
-ax.tick_params(axis='y', labelsize=18)
+ax.tick_params(axis='y', labelsize=58)
 for spine in ['top', 'right', 'left']:
     ax.spines[spine].set_visible(False)
-ax.legend(loc='upper left',bbox_to_anchor=(-0.2, 1), markerscale=1,fontsize=35, frameon=False,  )
-
+ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=2, markerscale=1, fontsize=45, frameon=False)
 
 plt.savefig(f"conservation_firstVSlastLast_tiny.png", dpi=300, bbox_inches='tight')

@@ -11,7 +11,7 @@ from helper_scripts.helper_functions import update_json
 from attDatasets.imdb import load_imdb, MovieReviewDataset, create_data_loader
 from tqdm import tqdm
 from lxt.utils import pdf_heatmap, clean_tokens
-
+from llama_engine import run_LRP
 
 import numpy as np
 import pandas as pd
@@ -34,7 +34,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import argparse
 parser = argparse.ArgumentParser(description='Train a segmentation')
 parser.add_argument('--model-size', type=str,
-                        choices=['llama_2_7b', 'llama_tiny'],
+                        choices=['llama_2_7b', 'llama_tiny', ],
                         default = 'llama_tiny',
                        # required = True,
                         help='')
@@ -42,15 +42,36 @@ parser.add_argument('--variant', type=str,
                        default="baseline")
 parser.add_argument('--resume', action='store_true')
 parser.add_argument('--pe', action='store_true')
+parser.add_argument('--rule_matmul', action='store_true')
+
 parser.add_argument('--reform', action='store_true')
 
 parser.add_argument('--quant', action='store_true')
 
 parser.add_argument('--trained_model', type=str,)
+parser.add_argument('--clamp', action='store_true')
+
 
 parser.add_argument('--sequence-length', type=int,
                        )
+parser.add_argument('--pe_only', action='store_true')
+parser.add_argument('--sep_heads', action='store_true')
+
+
+
+parser.add_argument('--no-padding', action='store_true')
+parser.add_argument('--without-abs', action='store_true')
+parser.add_argument('--single-norm', action='store_true')
+
+
+
+
+
 args = parser.parse_args()
+
+if args.sep_heads and args.pe == False:
+    print("for sep_head you must include --pe")
+    exit(1)
 args.dataset = 'imdb'
 #rgs.model_size = 'llama_tiny'
 
@@ -62,12 +83,12 @@ np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
 
-if args.model_size == 'llama_tiny': 
-    model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
-if args.model_size == 'llama_2_7b':
-    model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline/best_checkpoint/pytorch_model.bin"
-    if args.variant == "baseline2":
-        model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline2/best_checkpoint/pytorch_model.bin"
+#if args.model_size == 'llama_tiny': 
+#    model_checkpoint = "finetuned_models/imdb/llama_tiny/baseline/checkpoint_0/pytorch_model.bin"
+#if args.model_size == 'llama_2_7b':
+#    model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline/best_checkpoint/pytorch_model.bin"
+#    if args.variant == "baseline2":
+#        model_checkpoint = "finetuned_models/imdb/llama_2_7b/baseline2/best_checkpoint/pytorch_model.bin"
 
 
 PATH = args.original_models
@@ -101,7 +122,7 @@ conf.num_labels = 2
 conf.pad_token_id = tokenizer.pad_token_id
 
 
-model = LlamaForSequenceClassification.from_pretrained(model_checkpoint, config = conf,  torch_dtype=torch.bfloat16, device_map="cuda")
+model = LlamaForSequenceClassification.from_pretrained(args.model_checkpoint, config = conf,  torch_dtype=torch.bfloat16, device_map="cuda")
 model.to(device)
 
 
@@ -110,17 +131,35 @@ BATCH_SIZE = 1
 
 df = load_imdb()
 df_train, df_test = train_test_split(df, test_size=0.3, random_state=RANDOM_SEED)
-test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE)
+test_data_loader = create_data_loader(df_test, tokenizer, MAX_LEN, BATCH_SIZE, args.no_padding)
 
 # optional gradient checkpointing to save memory (2x forward pass)
 model.gradient_checkpointing_enable()
 
 # apply AttnLRP rules
 attnlrp.register(model)
+run_LRP(model,
+       test_data_loader,
+        tokenizer,
+        isBinary=True,
+         withPE = args.pe,
+          reform=args.reform,
+           pe_only = args.pe_only,
+            withoutABS = args.without_abs,
+             clamp = args.clamp,
+             sep_heads = args.sep_heads,
+             single_norm = args.single_norm,
+             vis_mode = True,
+             debug_mode = False,
+             sample_num=4,
+             rule_matmul = args.rule_matmul,
+               )
 
+
+'''
 count = 0
 for d in tqdm(test_data_loader):
-    if count !=18:
+    if count !=11:
         count+=1
         continue
     input_ids = d["input_ids"].to(device)
@@ -136,12 +175,33 @@ for d in tqdm(test_data_loader):
                dtype=torch.float32
             ).reshape(1, -1)
     
-        position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
-        position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
 
+        #exit(1)
+        if args.sep_heads:
+            position_embeddings = []
+            for i in range(model.config.num_hidden_layers):
+                pe_tuple = model.get_input_pos_embeddings()(input_embeds, position_ids)
+                pe1_a = pe_tuple[0].repeat(model.config.num_attention_heads, 1, 1).requires_grad_()
+                pe1_b = pe_tuple[0].repeat(model.config.num_key_value_heads, 1, 1).requires_grad_()
+
+                pe2_a = pe_tuple[1].repeat(model.config.num_attention_heads, 1, 1).requires_grad_()
+                pe2_b = pe_tuple[1].repeat(model.config.num_key_value_heads, 1, 1).requires_grad_()
+
+                #print(pe2.shape)
+            
+                position_embeddings.append((pe1_a,pe1_b,pe2_a,pe2_b))
+          
+            #position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids)[0] for i in range(model.config.num_hidden_layers)]
+ 
+        else:
+            position_embeddings = [model.get_input_pos_embeddings()(input_embeds, position_ids) for i in range(model.config.num_hidden_layers)]
+            position_embeddings = [(x[0].requires_grad_(),x[1].requires_grad_()) for x in  position_embeddings ]
+        
+    
         outputs = model(
             inputs_embeds = input_embeds.requires_grad_(),
             position_embeddings = position_embeddings,
+            sep_heads = args.sep_heads,
             #input_ids=input_ids,
             use_cache=False,
             attention_mask=attention_mask
@@ -160,29 +220,61 @@ for d in tqdm(test_data_loader):
     max_logits, max_indices = torch.max(outputs, dim=1)
     max_logits.backward(max_logits)
     
-   
+    #print("HERE")
+    #exit(1)
 
     relevance = input_embeds.grad.float().sum(-1).cpu()[0] # cast to float32 before summation for higher precision
-    relevance = relevance / relevance.abs().max()
+    if args.single_norm:
+        pass
+    else:
+        relevance = relevance / relevance.abs().max()
 
     if args.pe:
         acc_relevancy = 0.
+        num_pos_embed_layer = 4 if args.sep_heads else 2
         for pos_embed in position_embeddings:
-            for i in range(1):
+            for i in range(num_pos_embed_layer):
                 #print(pos_embed[i].grad.float().dtype)
                 #print(pos_embed[i].dtype)
                 if args.reform:
-                    curr_relevancy = torch.matmul(pos_embed[i].grad.abs(), pos_embed[i].transpose(-1, -2).abs()).detach()
+                    if args.without_abs:
+                        curr_relevancy = torch.matmul(pos_embed[i].grad, pos_embed[i].transpose(-1, -2)).detach()
+                    else:
+                        curr_relevancy = torch.matmul(pos_embed[i].grad.abs(), pos_embed[i].transpose(-1, -2).abs()).detach()
+                    curr_relevancy /= (2*curr_relevancy.shape[-1])
+                       
                     curr_relevancy = curr_relevancy.float().sum(-1).cpu()[0]
                 else:
                     curr_relevancy = pos_embed[i].grad.float().sum(-1).cpu()[0]
-                curr_relevancy = curr_relevancy / curr_relevancy.abs().max()
-                #print(curr_relevancy.requires_grad == True)
-                #exit(1)
-                acc_relevancy += curr_relevancy.abs()
+                
+                #curr_relevancy = curr_relevancy / curr_relevancy.abs().max()
+                
+                if args.single_norm:
+                    pass
+                else:
+                    curr_relevancy = curr_relevancy / curr_relevancy.abs().max()
 
-        acc_relevancy = (acc_relevancy - acc_relevancy.min()) / (acc_relevancy.max() - acc_relevancy.min())
-        relevance+=acc_relevancy
+                if args.without_abs:
+                    pass
+                else:
+                    curr_relevancy = curr_relevancy.abs()
+
+                acc_relevancy += curr_relevancy
+
+        
+        if args.clamp:
+            acc_relevancy = acc_relevancy.clamp(min=0)
+
+        
+        if args.single_norm == False:
+            acc_relevancy = acc_relevancy / acc_relevancy.abs().max()
+        if args.pe_only:
+            relevance=acc_relevancy.detach()
+
+        else:
+            if args.reform:
+                acc_relevancy = acc_relevancy / model.config.num_hidden_layers
+            relevance+=acc_relevancy
         relevance = relevance / relevance.abs().max()
         #when we want to check only positional:
         #relevance = acc_relevancy
@@ -198,4 +290,4 @@ for d in tqdm(test_data_loader):
     pdf_heatmap(tokens, relevance, path='heatmap.pdf', backend='xelatex')
     exit(1)
 
-       
+       '''

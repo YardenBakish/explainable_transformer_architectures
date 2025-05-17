@@ -1,5 +1,5 @@
 from torch import nn, optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
 from torch import nn
 import copy
@@ -8,6 +8,23 @@ import pandas as pd
 import torch
 import os 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+
+
+global_reviews = ["I really liked this Summerslam due to the look of the arena. This is one of the best Summerslam's ever because the WWF didn't have Lex Luger.",
+           "'I Am Curious: Yellow' is a risible and pretentious steaming pile. It doesn't matter what one's political views are because this film can hardly be taken seriously on any level.",
+           
+           "I really liked this Summerslam due to the look of the arena. 'I Am Curious: Yellow' is a risible and pretentious steaming pile. This is one of the best Summerslam's ever because the WWF didn't have Lex Luger. It doesn't matter what one's political views are because this film can hardly be taken seriously on any level.",
+
+           "This movie sucked and was too long.It really was a waste of my life." ,
+            "This movie sucked and was too long. I really liked this Summerslam due to the look of the arena. It really was a waste of my life. This is one of the best Summerslam's ever because the WWF didn't have Lex Luger."
+           ]
+
+
+
+
+
+
 
 def load_imdb(file ='attDatasets/imdb.csv' ):
     
@@ -24,39 +41,45 @@ def to_sentiment(rating):
 
 class MovieReviewDataset(Dataset):
 
-  def __init__(self, reviews, targets, tokenizer, max_len):
+  def __init__(self, reviews, targets, tokenizer, max_len, no_padding):
     self.reviews = reviews
     self.targets = targets
     self.tokenizer = tokenizer
     self.max_len = max_len
+    self.no_padding = no_padding
+
   
   def __len__(self):
     return len(self.reviews)
   
   def __getitem__(self, item):
     review = str(self.reviews[item])
+    #print(review)
+ 
     target = self.targets[item]
 
-    encoding = self.tokenizer.encode_plus(
-      #review,
-      #add_special_tokens=True,
-      #max_length=self.max_len,
-      #return_token_type_ids=True,
-      #pad_to_max_length=True,
-      #return_attention_mask=True,
-      #return_tensors='pt',
-      #truncation = True
-
-      review,
-      add_special_tokens=True,
-      #max_length=self.max_len,
-      return_token_type_ids=True,
-      #pad_to_max_length=True,
-      return_attention_mask=True,
-      return_tensors='pt',
-      #truncation = True
-    )
-
+    padding = (self.no_padding == False)
+    #print(padding)
+    if padding:
+      encoding = self.tokenizer.encode_plus(
+        review,
+        add_special_tokens=True,
+        max_length=self.max_len,
+        return_token_type_ids=True,
+        pad_to_max_length=True,
+        return_attention_mask=True,
+        return_tensors='pt',
+        truncation = True
+      )
+    else:
+      encoding = self.tokenizer.encode_plus(
+        review,
+        add_special_tokens=True,
+        return_token_type_ids=True,
+        return_attention_mask=True,
+        return_tensors='pt',
+        
+      )
     return {
       'review_text': review,
       'input_ids': encoding['input_ids'].flatten(),
@@ -65,13 +88,16 @@ class MovieReviewDataset(Dataset):
       'targets': torch.tensor(target, dtype=torch.long)
     }
 
-def create_data_loader(df, tokenizer, max_len, batch_size):
+def create_data_loader(df, tokenizer, max_len, batch_size, no_padding=False):
   ds = MovieReviewDataset(
     reviews=df.review.to_numpy(),
     targets=df.sentiment_score.to_numpy(),
     tokenizer=tokenizer,
-    max_len=max_len
+    max_len=max_len,
+    no_padding = no_padding
   )
+
+  ds = Subset(ds, range(5000))
 
   return DataLoader(
     ds,

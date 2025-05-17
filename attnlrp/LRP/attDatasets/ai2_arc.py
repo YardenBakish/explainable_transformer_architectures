@@ -5,7 +5,7 @@ os.environ['HF_HOME'] = '/home/ai_center/ai_users/yardenbakish/'
 
 
 from torch import nn, optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 import torch.nn.functional as F
 from torch import nn
 import copy
@@ -59,7 +59,7 @@ class AI2_ARC_Dataset(Dataset):
     for i in range(len(choice)):
       options+=f"\n{chr(65 + i)}. {choice[i]}"
     prompt = f"The following is multiple choice question (with answers).\n\n{question}{options}\n\nPlease make sure to answer (A,B,C, or D)\nAnswer is:"
-   
+    #print(prompt)
     encoding = self.tokenizer(
       prompt,
       add_special_tokens=True,
@@ -79,7 +79,7 @@ class AI2_ARC_Dataset(Dataset):
       'targets': torch.tensor(answerKey, dtype=torch.long)
     }
 
-def create_data_loader(df, tokenizer, max_len, batch_size):
+def create_data_loader(df, tokenizer, max_len, batch_size,debug=False):
   ds = AI2_ARC_Dataset(
     question =df.question.to_numpy(),
     choices =df.choices.to_numpy(),
@@ -87,6 +87,8 @@ def create_data_loader(df, tokenizer, max_len, batch_size):
     tokenizer=tokenizer,
     max_len=max_len
   )
+  if debug:
+    ds = Subset(ds, range(1500))
 
   return DataLoader(
     ds,

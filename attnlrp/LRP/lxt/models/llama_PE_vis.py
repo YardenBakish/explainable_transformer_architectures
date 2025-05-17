@@ -1128,14 +1128,20 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
         config.attn_layer = attn_layer
         config.sequence_length = sequence_length
 
+
         self.model = LlamaModel(config)
         self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
+        self.identity_matrices = [torch.eye(512).to("cuda:0") for t in range(config.num_hidden_layers)] 
+
 
         # Initialize weights and apply final processing
         self.post_init()
 
     def get_input_embeddings(self):
         return self.model.embed_tokens
+    
+    
+  
     
     def get_input_pos_embeddings(self):
         return self.model.rotary_emb
@@ -1156,6 +1162,9 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        identity_matrices: Optional[torch.FloatTensor] = None,
+
+
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, SequenceClassifierOutputWithPast]:
         r"""
@@ -1165,6 +1174,9 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if identity_matrices is not None:
+            position_embeddings = [(lf.matmul(identity_matrices[i],x[0])  ,lf.matmul(identity_matrices[i],x[1])) for i, x in enumerate(position_embeddings) ]
+
 
         transformer_outputs = self.model(
             input_ids,

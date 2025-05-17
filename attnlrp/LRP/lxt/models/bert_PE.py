@@ -56,12 +56,15 @@ import lxt.modules as lm
 import lxt.functional as lf
 import lxt.rules as rules
 from lxt.core import Composite
+from bitsandbytes.nn import Linear4bit, Linear8bitLt
 
 attnlrp = Composite({
     nn.ReLU: rules.IdentityRule,
     nn.Tanh: rules.IdentityRule,
     nn.Linear: rules.EpsilonRule,
-    GELUActivation: rules.IdentityRule
+    GELUActivation: rules.IdentityRule,
+    Linear4bit: rules.EpsilonRule,
+    Linear8bitLt: rules.EpsilonRule,
 })
 
 logger = logging.get_logger(__name__)
@@ -197,17 +200,14 @@ class BertEmbeddings(nn.Module):
         super().__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-        
-    
         self.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
-        
+
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
         self.LayerNorm = lm.LayerNormEpsilon(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
-        #self.position_ids =  torch.arange(config.max_position_embeddings, requires_grad=True, dtype =torch.long).expand((1, -1))
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
         if version.parse(torch.__version__) > version.parse("1.6.0"):
             self.register_buffer(
@@ -222,9 +222,11 @@ class BertEmbeddings(nn.Module):
         token_type_ids: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        position_embeddings: Optional[torch.Tensor] = None,
+
         past_key_values_length: int = 0,
     ) -> torch.Tensor:
-    
+      
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -249,20 +251,14 @@ class BertEmbeddings(nn.Module):
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
-        
-        embeddings = lf.add_custom(inputs_embeds, token_type_embeddings.detach(), id="embedding_layer1")
+
+        embeddings = lf.add2(inputs_embeds, token_type_embeddings.detach())
         if self.position_embedding_type == "absolute":
-            #print(position_ids)
-            position_embeddings = self.position_embeddings(position_ids)
-            #position_embeddings.requires_grad_()
-            #print(position_embeddings.shape)
-            #print(position_embeddings.requires_grad == True)
-            #print(embeddings.requires_grad == True)
-            #exit(1)
 
-
-            embeddings = lf.add_custom(embeddings, position_embeddings,id="embedding_layer2")
-      
+            if position_embeddings is None:
+                position_embeddings = self.position_embeddings(position_ids)
+     
+            embeddings = lf.add2(embeddings, position_embeddings)
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
@@ -373,7 +369,7 @@ class BertSelfAttention(nn.Module):
             attention_scores = lf.add2(attention_scores, attention_mask)
 
         # Normalize the attention scores to probabilities.
-        attention_probs = lf.softmax(attention_scores, dim=-1)
+        attention_probs = lf.softmax(attention_scores, dim=-1).detach()
 
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
@@ -945,6 +941,8 @@ class BertModel(BertPreTrainedModel):
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[torch.Tensor] = None,
+
         inputs_embeds: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
@@ -1032,12 +1030,13 @@ class BertModel(BertPreTrainedModel):
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-        #YARDEN
+
         embedding_output = self.embeddings(
             input_ids=input_ids,
             position_ids=position_ids,
             token_type_ids=token_type_ids,
             inputs_embeds=inputs_embeds,
+            position_embeddings = position_embeddings,
             past_key_values_length=past_key_values_length,
         )
         encoder_outputs = self.encoder(
@@ -1569,6 +1568,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        position_embeddings: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -1588,6 +1588,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            position_embeddings = position_embeddings
         )
 
         pooled_output = outputs[1]

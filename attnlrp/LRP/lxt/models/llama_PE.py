@@ -257,7 +257,7 @@ def rotate_half(x):
 
 
 #YARDEN
-def apply_rotary_pos_emb(q, k, cos, sin,detachPE, position_ids=None, unsqueeze_dim=1):
+def apply_rotary_pos_emb(q, k, cos, sin,cos_K,sin_K, detachPE, position_ids=None, unsqueeze_dim=0):
     """Applies Rotary Position Embedding to the query and key tensors.
 
     Args:
@@ -277,25 +277,30 @@ def apply_rotary_pos_emb(q, k, cos, sin,detachPE, position_ids=None, unsqueeze_d
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
+ 
+
+
     cos = cos.unsqueeze(unsqueeze_dim)
     sin = sin.unsqueeze(unsqueeze_dim)
+
+    if cos_K is not None:
+        cos_K = cos_K.unsqueeze(unsqueeze_dim)
+        sin_K = sin_K.unsqueeze(unsqueeze_dim)
     # q_embed = (q * cos) + (rotate_half(q) * sin)
     # k_embed = (k * cos) + (rotate_half(k) * sin)
-
-    #print(detachPE)
-    #print(cos.shape)
-    #print(q.shape)
-    #print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n\n")
-
 
 
     if detachPE:
         q_embed = lf.add2(lf.mul2(q, cos.detach()), lf.mul2(rotate_half(q), sin.detach())) #### <---- LXT
         k_embed = lf.add2(lf.mul2(k, cos.detach()), lf.mul2(rotate_half(k), sin.detach())) #### <---- LXT
     else:
+       
         q_embed = lf.add2(lf.mul2(q, cos), lf.mul2(rotate_half(q), sin)) #### <---- LXT
-        k_embed = lf.add2(lf.mul2(k, cos), lf.mul2(rotate_half(k), sin)) #### <---- LXT
-    
+        if cos_K is not None:
+            k_embed = lf.add2(lf.mul2(k, cos_K), lf.mul2(rotate_half(k), sin_K)) #### <---- LXT
+        else:
+            k_embed = lf.add2(lf.mul2(k, cos), lf.mul2(rotate_half(k), sin)) #### <---- LXT
+
     return q_embed, k_embed
 
 
@@ -378,6 +383,8 @@ class LlamaAttention(nn.Module):
         output_attentions: bool = False,
         use_cache: bool = False,
         detachPE: bool = True,
+        sep_heads: bool = False,
+
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         **kwargs,
@@ -387,15 +394,18 @@ class LlamaAttention(nn.Module):
         if self.config.pretraining_tp > 1:
             raise NotImplementedError("Pretraining TP > 1 is not supported in LXT right now. Please open GitHub issue.")
 
+        
         else:
             query_states = self.q_proj(hidden_states)
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+ 
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-
+        cos_K = None
+        sin_K = None
         if position_embeddings is None:
             logger.warning_once(
                 "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
@@ -404,11 +414,14 @@ class LlamaAttention(nn.Module):
                 "removed and `position_embeddings` will be mandatory."
             )
             cos, sin = self.rotary_emb(value_states, position_ids)
+ 
         else:
-            #print(position_embeddings[0].requires_grad == True)
-            cos, sin = position_embeddings
+            if sep_heads:
+                cos, cos_K, sin, sin_K = position_embeddings
+            else:
+                cos, sin = position_embeddings
         #print(detachPE)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin,detachPE)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin,cos_K,sin_K,detachPE)
 
         if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
@@ -491,6 +504,8 @@ class LlamaDecoderLayer(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
         detachPE: Optional[bool] = False,
+        sep_heads: Optional[bool] = False,
+
         
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
@@ -517,6 +532,7 @@ class LlamaDecoderLayer(nn.Module):
                 into the model
         """
         #print(detachPE)
+    
         residual = hidden_states
    
         hidden_states = self.input_layernorm(hidden_states)
@@ -530,6 +546,7 @@ class LlamaDecoderLayer(nn.Module):
             output_attentions=output_attentions,
             use_cache=use_cache,
             detachPE=detachPE,
+            sep_heads = sep_heads,
             cache_position=cache_position,
             position_embeddings=position_embeddings,
             **kwargs,
@@ -722,6 +739,8 @@ class LlamaModel(LlamaPreTrainedModel):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         position_embeddings: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
+        sep_heads: Optional[bool] = False,
+
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -800,6 +819,8 @@ class LlamaModel(LlamaPreTrainedModel):
             detachPE = flag==1
             # if self.gradient_checkpointing and self.training:
             if self.gradient_checkpointing: #### <---- LXT
+
+               
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
@@ -810,11 +831,12 @@ class LlamaModel(LlamaPreTrainedModel):
                     use_cache,
                     cache_position,
                     pos_embed,
-                    detachPE
+                    detachPE,
+                    sep_heads
                     #flag ==1,
                 )
             else:
-            
+             
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=causal_mask,
@@ -824,7 +846,9 @@ class LlamaModel(LlamaPreTrainedModel):
                     use_cache=use_cache,
                     cache_position=cache_position,
                     position_embeddings=pos_embed,
-                    detachPE = detachPE
+                    detachPE = detachPE,
+                    sep_heads = sep_heads
+
                 )
 
             hidden_states = layer_outputs[0]
@@ -1021,6 +1045,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[torch.FloatTensor] = None,
+        sep_heads: Optional[bool] = False,
 
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -1072,7 +1097,7 @@ class LlamaForCausalLM(LlamaPreTrainedModel, GenerationMixin):
             attention_mask=attention_mask,
             position_ids=position_ids,
             position_embeddings = position_embeddings,
-
+            sep_heads = sep_heads,
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             use_cache=use_cache,
@@ -1130,6 +1155,7 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
 
         self.model = LlamaModel(config)
         self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
+        self.identity_matrices = [torch.eye(512).to("cuda:0") for t in range(config.num_hidden_layers)] 
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -1154,6 +1180,9 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
         position_embeddings: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
+        sep_heads: Optional[bool] = False,
+        identity_matrices: Optional[torch.FloatTensor] = None,
+
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -1165,6 +1194,8 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if identity_matrices is not None:
+            position_embeddings = [(lf.matmul(identity_matrices[i],x[0])  ,lf.matmul(identity_matrices[i],x[1])) for i, x in enumerate(position_embeddings) ]
 
         transformer_outputs = self.model(
             input_ids,
@@ -1177,6 +1208,7 @@ class LlamaForSequenceClassification(LlamaPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            sep_heads  = sep_heads
         )
         hidden_states = transformer_outputs[0]
         logits = self.score(hidden_states)

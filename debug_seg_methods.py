@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from numpy import *
 import argparse
 from PIL import Image
@@ -12,7 +12,7 @@ from models.model_handler import model_env
 from utils.iou import IoU
 import config
 from data.imagenet_new import Imagenet_Segmentation
-
+from misc.helper_functions import update_json
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 import cv2
 
@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore")
 
 from sklearn.metrics import precision_recall_curve
 import matplotlib.pyplot as plt
-
+import json
 import torch.nn.functional as F
 
 plt.switch_backend('agg')
@@ -59,11 +59,11 @@ cls = ['airplane',
 parser = argparse.ArgumentParser(description='Training multi-class classifier')
 parser.add_argument('--arc', type=str, default='vgg', metavar='N',
                     help='Model architecture')
-parser.add_argument('--custom-trained-model1', type=str, 
+parser.add_argument('--custom-trained-model1', type=str, default="finetuned_models/IMNET/basic/checkpoint_0.pth",
                     help='Model path')
 parser.add_argument('--threshold-type', choices = ['mean', 'otsu', 'MoV'], required = True)
 
-parser.add_argument('--custom-trained-model2', type=str, 
+parser.add_argument('--custom-trained-model2', type=str, default="finetuned_models/IMNET/basic/checkpoint_0.pth",
                     help='Model path')
 
 parser.add_argument('--variant1', default = 'basic', help="")
@@ -81,6 +81,8 @@ parser.add_argument('--method', type=str,
                     default='grad_rollout',
       
                     help='')
+parser.add_argument('--mode', required= True, choices = ["check", "gen_images"])
+
 parser.add_argument('--thr', type=float, default=0.,
                     help='threshold')
 parser.add_argument('--K', type=int, default=1,
@@ -110,7 +112,7 @@ parser.add_argument('--is-ablation', type=bool,
 parser.add_argument('--data-path', type=str,
                      
                         help='')
-parser.add_argument('--imagenet-seg-path', type=str, required=True)
+parser.add_argument('--imagenet-seg-path',default="gtsegs_ijcv.mat", type=str, )
 args1 = parser.parse_args()
 args2 = parser.parse_args()
 
@@ -123,7 +125,7 @@ args1.custom_trained_model = args1.custom_trained_model1
 args2.custom_trained_model = args2.custom_trained_model2
 
 
-
+filenameJson = "testing/segmentation_debug_no_inter_results/fore_customLRP.json"
 config.get_config(args1, skip_further_testing = True)
 config.set_components_custom_lrp(args1)
 
@@ -175,6 +177,43 @@ imagenet_trans = transforms.Compose([
 
 
 
+
+def concatenate_images_with_gaps(images, gap_size=10):
+    """
+    Concatenate multiple RGB images horizontally with gaps between them.
+    
+    Args:
+        images: List of numpy arrays (RGB images)
+        gap_size: Size of gap between images in pixels
+    
+    Returns:
+        Combined RGB image as numpy array
+    """
+    # Get dimensions
+    height = 224  # As specified in the requirements
+    width = 224   # As specified in the requirements
+    channels = 3  # RGB channels
+    n_images = len(images)
+    
+    # Create empty array for the combined image with white background
+    total_width = (n_images * width) + ((n_images - 1) * gap_size)
+    combined_image = np.ones((height, total_width, channels), dtype=np.float32)
+    
+    # Place each image with gaps
+    current_position = 0
+    for img in images:
+        # Ensure image is the correct size
+        if img.shape != (height, width, channels):
+            img = np.resize(img, (height, width, channels))
+            
+        # Place the image
+        combined_image[:, current_position:current_position + width, :] = img
+        current_position += width + gap_size
+    
+    return combined_image
+
+
+
 def otsu_threshold(img):
     """
     Compute Otsu's threshold for a 2D array.
@@ -220,7 +259,17 @@ test_lbl_trans = transforms.Compose([
 
 ds = Imagenet_Segmentation(args1.imagenet_seg_path,
                            transform=imagenet_trans, target_transform=test_lbl_trans)
-dl = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=1, drop_last=False)
+
+if args1.mode == "gen_images":
+    with open(filenameJson, 'r') as file:
+        data = json.load(file)["res"]
+    sorted_indices = [elem[0] for elem in data ]
+    subset = Subset(ds, sorted_indices)
+   
+    dl = DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=1, drop_last=False)
+
+else:
+    dl = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=1, drop_last=False)
 
 # Model
 
@@ -518,7 +567,6 @@ def eval_batch(image, labels, evaluator, index):
     batch_inter2 += inter2
     batch_union2 += union2
 
-    print("here?")
     correct3, labeled3 = batch_pix_accuracy(output3[0].data.cpu(), labels[0])
     inter3, union3 = batch_intersection_union(output3[0].data.cpu(), labels[0], 2)
     batch_correct3 += correct3
@@ -578,14 +626,18 @@ def eval_batch(image, labels, evaluator, index):
     img = 255 * (img - img.min()) / (img.max() - img.min())
     img = img.astype('uint8')
 
-    Res1_mask = Res1.squeeze().data.cpu().numpy()
+
+
+    Res1_mask = Res1_1.squeeze().data.cpu().numpy()
+ 
     Res1_mask = (np.stack([Res1_mask, Res1_mask, Res1_mask], axis=-1) * 255) .astype('uint8')
 
-    Res2_mask = Res2.squeeze().data.cpu().numpy()
+
+    Res2_mask = Res2_1.squeeze().data.cpu().numpy()
     Res2_mask = (np.stack([Res2_mask, Res2_mask, Res2_mask], axis=-1) * 255) .astype('uint8')
 
 
-    Res3_mask = Res3.squeeze().data.cpu().numpy()
+    Res3_mask = Res3_1.squeeze().data.cpu().numpy()
     Res3_mask = (np.stack([Res3_mask, Res3_mask, Res3_mask], axis=-1) * 255) .astype('uint8')
    
     #Res1_mask =( Res1.reshape(224, 224).data.cpu().numpy().repeat(3, 1, 1) * 255).astype('uint8')
@@ -619,17 +671,35 @@ def eval_batch(image, labels, evaluator, index):
     #print("\n")
     winner_pixAcc    = "ours" if pixAcc1 > pixAcc2 else "SEMANTIC"
     winner_miou      = "ours" if mIOU1 > mIOU2 else "SEMANTIC"
-    winner_iou_fore  = "ours" if IOU1[0] > IOU2[0] else "SEMANTIC"  
+    winner_iou_fore  = "ours" if batch_inter1[1] > batch_inter2[1] else "SEMANTIC"  
+    #winner_AP  = "ours" if batch_ap1 > batch_ap2 else "SEMANTIC"  
+
+
+
+    if args1.mode == "gen_images":
+        print(f"PIX: {pixAcc1} {pixAcc2} ")
+        print(f"IOU: {mIOU1} {mIOU2} ")
+        print(f"FIOU: {IOU1[0]} {IOU2[0]} ")
+        print(f"AP: {batch_ap1} {batch_ap2} ")
+
+
+        plt.imsave(f"testing/segmentation_debug_no_inter2/{index}.png", img)
+        plt.imsave(f"testing/segmentation_debug_no_inter2/{index}_ours.png", heatmap1)
+        plt.imsave(f"testing/segmentation_debug_no_inter2/{index}_SEMANTIC.png", heatmap2)
+        plt.imsave(f"testing/segmentation_debug_no_inter2/{index}_POSITIONAL.png", heatmap3)
+        conc_imgs = concatenate_images_with_gaps([img, label_img, heatmap1, Res1_mask, heatmap2, Res2_mask])
+        conc_imgs = conc_imgs.astype('uint8')
+        plt.imsave(f"testing/segmentation_debug_no_inter2/{index}_compare.png"  ,conc_imgs)
+
+
+        return None
 
     if winner_iou_fore == "ours":
-        print(mIOU1)
-        print(mIOU2)
+        print(f"FIOU: {batch_inter1[1]} {batch_inter2[1]} ")
 
-        plt.imsave(f"testing/segmentation_debug2/{index}.png", img)
-        plt.imsave(f"testing/segmentation_debug2/{index}_ours.png", heatmap1)
-        plt.imsave(f"testing/segmentation_debug2/{index}_SEMANTIC.png", heatmap2)
-        plt.imsave(f"testing/segmentation_debug2/{index}_POSITIONAL.png", heatmap3)
-        return [batch_idx, pixAcc1 - pixAcc2]
+        return [batch_idx, int(batch_inter1[1] - batch_inter2[1])]
+        #return [batch_idx, batch_ap1[0] - batch_ap2[0]]
+    
         
     return None
 
@@ -643,7 +713,7 @@ def eval_batch(image, labels, evaluator, index):
 
     return sorted_arr
 
-os.makedirs("testing/segmentation_debug2", exist_ok=True)
+os.makedirs("testing/segmentation_debug_no_inter2", exist_ok=True)
 total_inter, total_union, total_correct, total_label = np.int64(0), np.int64(0), np.int64(0), np.int64(0)
 total_ap, total_f1 = [], []
 
@@ -653,7 +723,7 @@ count = 0
 for batch_idx, (image, labels) in enumerate(iterator):
     count+=1
     
-    if count > 20:
+    if count > 20 and args1.mode == "gen_images":
         break
     if args1.method == "blur":
         images = (image[0].cuda(), image[1].cuda())
@@ -666,7 +736,6 @@ for batch_idx, (image, labels) in enumerate(iterator):
     elem = eval_batch(images, labels, model, batch_idx)
     if elem !=None:
         arr_orig.append(elem)
-        arr_orig = sorted(arr_orig, key=lambda x: x[1], reverse=True)
     continue
     predictions.append(pred)
     targets.append(target)
@@ -692,7 +761,17 @@ for batch_idx, (image, labels) in enumerate(iterator):
     iterator.set_description('pixAcc: %.4f, mIoU: %.4f, mAP: %.4f, mF1: %.4f' % (pixAcc, mIoU, mAp, mF1))
 
 
+
+
+if args1.mode == "gen_images":
+    exit(1)
+
+
+arr_orig = sorted(arr_orig, key=lambda x: x[1], reverse=True)
 #print(arr_orig)
+
+update_json(f"{filenameJson}", {f"res":arr_orig})
+
 
 #predictions = np.concatenate(predictions)
 #targets = np.concatenate(targets)

@@ -119,6 +119,9 @@ def evaluate(data_loader, model, device, isWithRegularization = False):
         # compute output
         with torch.cuda.amp.autocast():
             output = model(images)
+            print(output.shape)
+            print(target.shape)
+
             if isWithRegularization:
                 regularization_value = output[1]
                 output               = output[0]
